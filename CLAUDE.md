@@ -27,10 +27,11 @@ quizshow/
 ├── docs/
 │   ├── 00-overview.md
 │   ├── 01-mvp-requirements.md
-│   ├── 02-data-model.md          # TODO
-│   ├── 03-api-design.md          # TODO
-│   ├── 04-websocket-events.md    # TODO
-│   └── 05-ui-flows.md            # TODO
+│   ├── 02-data-model.md
+│   ├── 03-scoring-mechanics.md
+│   ├── 04-api-design.md
+│   ├── 05-websocket-events.md    # TODO
+│   └── 06-ui-flows.md            # TODO
 ├── specs/                         # specKit output, one file per feature
 ├── frontend/
 │   ├── admin/                     # React app — Admin Panel
@@ -84,6 +85,22 @@ See `docs/01-mvp-requirements.md` for the full user story list (26 stories acros
 - Media (images) in questions
 - Advanced analytics and PDF export
 - Team/squad mode
+
+## Implementation order — IMPORTANT
+
+**Do not generate any frontend code until `docs/06-ui-flows.md` exists.**
+
+The frontend design system, component library choices, color palette, and UI flows for all three apps (admin, presenter, player) have not been defined yet. Generating React scaffolding, components, or pages before that document is present will produce inconsistent results that will need to be discarded.
+
+The correct implementation order is:
+
+1. **Backend first** — Go server, migrations, auth, all REST endpoints, WebSocket hub
+2. **`docs/05-websocket-events.md` and `docs/06-ui-flows.md`** will be added before any frontend work begins
+3. **Frontend second** — React apps, only after the UI design document is in place
+
+If a specKit task or plan includes frontend work and `docs/06-ui-flows.md` does not exist yet: skip the frontend tasks, flag them as blocked, and continue with backend-only tasks.
+
+---
 
 ## specKit workflow
 

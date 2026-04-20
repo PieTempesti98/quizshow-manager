@@ -112,3 +112,10 @@ This project uses spec-driven development via specKit. Before implementing any f
 4. Review tasks, then run `/speckit.implement`
 
 Spec files live in `specs/`. Never implement a feature without a spec file present.
+
+## Active Technologies
+- Go 1.25 + gofiber/fiber v2, golang-jwt/jwt v5, jackc/pgx v5, google/uuid v1, golang.org/x/crypto (bcrypt — **missing from go.mod, must be added**) (001-admin-auth)
+- PostgreSQL — tables `admins`, `refresh_tokens` (migration 001 already covers both) (001-admin-auth)
+
+## Recent Changes
+- 001-admin-auth: Added Go 1.25 + gofiber/fiber v2, golang-jwt/jwt v5, jackc/pgx v5, google/uuid v1, golang.org/x/crypto (bcrypt — **missing from go.mod, must be added**)

@@ -7,9 +7,9 @@ Update it at the end of every Claude Code session.
 
 ## Current status
 
-**Phase:** Design complete — specKit initialized — ready for first feature spec
+**Phase:** Backend implementation in progress — auth complete
 **Last updated:** 2025-04-20
-**Active branch:** `main` (scaffold only, no implementation yet)
+**Active branch:** `feature/US-A01-A02-auth` (ready to merge into develop)
 
 ---
 
@@ -37,17 +37,18 @@ Goal: working Go server with all REST endpoints, database, and auth. No frontend
 #### 1.1 Project bootstrap
 - [x] `specify init . --ai claude` — initialize specKit
 - [x] `/speckit.constitution` — consolidate principles from `.specify/constitution.md`
-- [ ] Go module init (`go mod init github.com/yourname/quizshow`)
-- [ ] Fiber server skeleton in `backend/cmd/server/`
-- [ ] Docker Compose wired up: backend + PostgreSQL
-- [ ] `golang-migrate` configured, migration 001 runs cleanly
+- [x] Go module init (`go mod init github.com/yourname/quizshow`)
+- [x] Fiber server skeleton in `backend/cmd/server/`
+- [x] Docker Compose wired up: backend + PostgreSQL
+- [ ] `golang-migrate` configured, migration 001 runs cleanly — pending live DB (T034)
 
 #### 1.2 Auth (US-A01, US-A02)
-- [ ] `POST /api/v1/auth/login`
-- [ ] `POST /api/v1/auth/refresh`
-- [ ] `POST /api/v1/auth/logout`
-- [ ] JWT middleware (admin role)
-- [ ] Admin seed on first run (from env vars)
+- [x] `POST /api/v1/auth/login`
+- [x] `POST /api/v1/auth/refresh`
+- [x] `POST /api/v1/auth/logout`
+- [x] JWT middleware (admin role)
+- [x] Admin seed on first run (from env vars)
+- [ ] T034 end-to-end smoke test — pending live DB
 
 #### 1.3 Question management (US-Q01–US-Q05)
 - [ ] `GET /api/v1/categories`
@@ -153,7 +154,7 @@ Each item maps to one `/speckit.specify` invocation.
 
 | # | Feature | User stories | Phase | Status |
 |---|---|---|---|---|
-| 1 | Auth admin | US-A01, US-A02 | 1.2 | Not started |
+| 1 | Auth admin | US-A01, US-A02 | 1.2 | Done — 28/28 tests pass, T034 pending live DB |
 | 2 | Categories CRUD | US-Q04 | 1.3 | Not started |
 | 3 | Questions CRUD | US-Q01, US-Q02, US-Q05 | 1.3 | Not started |
 | 4 | Questions CSV import | US-Q03 | 1.3 | Not started |
@@ -179,13 +180,14 @@ Each item maps to one `/speckit.specify` invocation.
 | 2025-04-20 | Difficulty = filter only in MVP | UX simplicity; multiplier + balanced pool planned for R2 |
 | 2025-04-20 | CSV import synchronous, max 500 rows | Sufficient for MVP scale; async job queue not justified |
 | 2025-04-20 | Stats on dedicated endpoints, not nested in session detail | Separation of concerns; avoids aggregation on every session fetch |
+| 2025-04-20 | `sessions.created_by` nullable FK to admins | MVP has one admin so visibility is global; field ready for R2 multi-admin filtering without migration |
 
 ---
 
 ## Next session checklist
 
 Before opening Claude Code:
-1. `git status` — confirm scaffold is clean
-2. `docker-compose up db` — PostgreSQL running
-3. Open this file and pick the first unchecked item in Phase 1
-4. Run `/speckit.specify` for feature #1 (auth admin)
+1. Merge `feature/US-A01-A02-auth` → `develop`
+2. `docker-compose up db` — run T034 smoke test with live DB
+3. `git checkout -b feature/US-Q04-categories` from develop
+4. `/speckit.specify` for feature #2 (categories CRUD, US-Q04)

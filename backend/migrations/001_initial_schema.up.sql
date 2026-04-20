@@ -90,6 +90,7 @@ CREATE TABLE sessions (
     speed_bonus_enabled     BOOLEAN NOT NULL DEFAULT false,
     started_at              TIMESTAMPTZ,
     ended_at                TIMESTAMPTZ,
+    created_by              UUID REFERENCES admins(id) ON DELETE SET NULL,
     created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted_at              TIMESTAMPTZ
@@ -100,6 +101,9 @@ CREATE UNIQUE INDEX sessions_pin_active_unique
     WHERE status IN ('lobby', 'active') AND deleted_at IS NULL;
 
 CREATE INDEX sessions_status_idx ON sessions (status)
+    WHERE deleted_at IS NULL;
+
+CREATE INDEX sessions_created_by_idx ON sessions (created_by)
     WHERE deleted_at IS NULL;
 
 -- ─── session_categories ───────────────────────────────────────────────────────

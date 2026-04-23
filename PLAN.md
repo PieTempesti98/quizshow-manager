@@ -7,9 +7,9 @@ Update it at the end of every Claude Code session.
 
 ## Current status
 
-**Phase:** Backend implementation in progress — auth complete
-**Last updated:** 2025-04-20
-**Active branch:** `feature/US-A01-A02-auth` (ready to merge into develop)
+**Phase:** Backend implementation in progress — auth + categories CRUD complete  
+**Last updated:** 2026-04-23  
+**Active branch:** `002-categories-crud` (ready to merge)
 
 ---
 
@@ -37,29 +37,30 @@ Goal: working Go server with all REST endpoints, database, and auth. No frontend
 #### 1.1 Project bootstrap
 - [x] `specify init . --ai claude` — initialize specKit
 - [x] `/speckit.constitution` — consolidate principles from `.specify/constitution.md`
-- [x] Go module init (`go mod init github.com/yourname/quizshow`)
+- [x] Go module init (`go mod init github.com/PieTempesti98/quizshow`)
 - [x] Fiber server skeleton in `backend/cmd/server/`
-- [x] Docker Compose wired up: backend + PostgreSQL
-- [ ] `golang-migrate` configured, migration 001 runs cleanly — pending live DB (T034)
+- [x] Docker Compose wired up: backend + PostgreSQL (healthcheck, restart-safe)
+- [x] `backend/Dockerfile` multi-stage build created
+- [x] Migration 001 applied — schema live in dev DB
 
 #### 1.2 Auth (US-A01, US-A02)
 - [x] `POST /api/v1/auth/login`
 - [x] `POST /api/v1/auth/refresh`
 - [x] `POST /api/v1/auth/logout`
-- [x] JWT middleware (admin role)
+- [x] JWT middleware (`RequireAdmin`)
 - [x] Admin seed on first run (from env vars)
-- [ ] T034 end-to-end smoke test — pending live DB
+- [x] End-to-end smoke test against live Docker DB — passed
 
 #### 1.3 Question management (US-Q01–US-Q05)
-- [ ] `GET /api/v1/categories`
-- [ ] `POST /api/v1/categories`
-- [ ] `PATCH /api/v1/categories/:id`
-- [ ] `DELETE /api/v1/categories/:id`
+- [x] `GET /api/v1/categories`
+- [x] `POST /api/v1/categories`
+- [x] `PATCH /api/v1/categories/:id`
+- [x] `DELETE /api/v1/categories/:id`
 - [ ] `GET /api/v1/questions` (paginated + filtered)
 - [ ] `POST /api/v1/questions`
 - [ ] `PATCH /api/v1/questions/:id`
 - [ ] `DELETE /api/v1/questions/:id`
-- [ ] `POST /api/v1/questions/import` (CSV, sincrono, max 500 righe)
+- [ ] `POST /api/v1/questions/import` (CSV, synchronous, max 500 rows)
 - [ ] `GET /api/v1/questions/import/template`
 
 #### 1.4 Session lifecycle (US-S01–US-S04)
@@ -154,8 +155,8 @@ Each item maps to one `/speckit.specify` invocation.
 
 | # | Feature | User stories | Phase | Status |
 |---|---|---|---|---|
-| 1 | Auth admin | US-A01, US-A02 | 1.2 | Done — 28/28 tests pass, T034 pending live DB |
-| 2 | Categories CRUD | US-Q04 | 1.3 | Not started |
+| 1 | Auth admin | US-A01, US-A02 | 1.2 | Done — smoke tested against live DB |
+| 2 | Categories CRUD | US-Q04 | 1.3 | Done — all 4 endpoints smoke tested |
 | 3 | Questions CRUD | US-Q01, US-Q02, US-Q05 | 1.3 | Not started |
 | 4 | Questions CSV import | US-Q03 | 1.3 | Not started |
 | 5 | Session create + configure | US-S01, US-S02 | 1.4 | Not started |
@@ -171,23 +172,25 @@ Each item maps to one `/speckit.specify` invocation.
 
 | Date | Decision | Rationale |
 |---|---|---|
-| 2025-04-20 | Go + Fiber for backend | Native concurrency for WebSocket hubs, clean path to microservices |
-| 2025-04-20 | JWT self-issued in MVP, Keycloak in R2 | Issuer-agnostic middleware — upgrade requires only env var change |
-| 2025-04-20 | Player identity ephemeral in MVP | No registration friction; token issued on join, TTL 4h |
-| 2025-04-20 | Projection Screen gets temporary token at launch | Security without operational complexity of full auth |
-| 2025-04-20 | REST for presenter commands, WebSocket push-only | Idempotency and explicit error handling for state mutations |
-| 2025-04-20 | Speed bonus linear (not tiered, not rank-based) | No cliff edges, independent of other players, trivially unit-testable |
-| 2025-04-20 | Difficulty = filter only in MVP | UX simplicity; multiplier + balanced pool planned for R2 |
-| 2025-04-20 | CSV import synchronous, max 500 rows | Sufficient for MVP scale; async job queue not justified |
-| 2025-04-20 | Stats on dedicated endpoints, not nested in session detail | Separation of concerns; avoids aggregation on every session fetch |
-| 2025-04-20 | `sessions.created_by` nullable FK to admins | MVP has one admin so visibility is global; field ready for R2 multi-admin filtering without migration |
+| 2026-04-20 | Go + Fiber for backend | Native concurrency for WebSocket hubs, clean path to microservices |
+| 2026-04-20 | JWT self-issued in MVP, Keycloak in R2 | Issuer-agnostic middleware — upgrade requires only env var change |
+| 2026-04-20 | Player identity ephemeral in MVP | No registration friction; token issued on join, TTL 4h |
+| 2026-04-20 | Projection Screen gets temporary token at launch | Security without operational complexity of full auth |
+| 2026-04-20 | REST for presenter commands, WebSocket push-only | Idempotency and explicit error handling for state mutations |
+| 2026-04-20 | Speed bonus linear (not tiered, not rank-based) | No cliff edges, independent of other players, trivially unit-testable |
+| 2026-04-20 | Difficulty = filter only in MVP | UX simplicity; multiplier + balanced pool planned for R2 |
+| 2026-04-20 | CSV import synchronous, max 500 rows | Sufficient for MVP scale; async job queue not justified |
+| 2026-04-20 | Stats on dedicated endpoints, not nested in session detail | Separation of concerns; avoids aggregation on every session fetch |
+| 2026-04-20 | `sessions.created_by` nullable FK to admins | MVP has one admin so visibility is global; field ready for R2 multi-admin filtering without migration |
+| 2026-04-23 | `internal/category/` package — 4-file layout mirroring auth | Consistent with established pattern; no ORM, raw pgx queries |
+| 2026-04-23 | `question_count` computed via LEFT JOIN at query time | Avoids denormalized counter maintenance; acceptable at MVP scale |
+| 2026-04-23 | `ErrCategoryHasQuestions` as struct (not var) | Carries blocking count for the error message without extra DB round-trip |
 
 ---
 
 ## Next session checklist
 
 Before opening Claude Code:
-1. Merge `feature/US-A01-A02-auth` → `develop`
-2. `docker-compose up db` — run T034 smoke test with live DB
-3. `git checkout -b feature/US-Q04-categories` from develop
-4. `/speckit.specify` for feature #2 (categories CRUD, US-Q04)
+1. Merge `002-categories-crud` → `main` (or develop)
+2. `git checkout -b 003-questions-crud` from main
+3. `/speckit.specify` for feature #3 (Questions CRUD — US-Q01, US-Q02, US-Q05)

@@ -117,6 +117,8 @@ Spec files live in `specs/`. Never implement a feature without a spec file prese
 - Go 1.25 + gofiber/fiber v2, golang-jwt/jwt v5, jackc/pgx v5, google/uuid v1, golang.org/x/crypto (bcrypt) (001-admin-auth)
 - PostgreSQL — tables `admins`, `refresh_tokens`, `categories`, `questions` (all in migration 001) (001-admin-auth, 002-categories-crud)
 - `internal/category/` package — `models.go` (Category, CategoryWithCount, slugify, sentinel errors), `repository.go` (CategoryRepo interface + pgx impl), `service.go` (Service interface), `handler.go` (GET/POST/PATCH/DELETE handlers) (002-categories-crud)
+- Go 1.25 + gofiber/fiber v2, jackc/pgx v5, google/uuid v1 (003-questions-crud)
+- PostgreSQL — `questions`, `categories`, `session_questions`, `sessions` tables (all in migration 001, no new migration required) (003-questions-crud)
 
 ## Recent Changes
 - 001-admin-auth: Added Go 1.25 + gofiber/fiber v2, golang-jwt/jwt v5, jackc/pgx v5, google/uuid v1, golang.org/x/crypto (bcrypt)

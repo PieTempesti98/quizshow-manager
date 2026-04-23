@@ -10,6 +10,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/PieTempesti98/quizshow/internal/api"
 	"github.com/PieTempesti98/quizshow/internal/auth"
+	"github.com/PieTempesti98/quizshow/internal/category"
 	"github.com/PieTempesti98/quizshow/internal/db"
 )
 
@@ -29,6 +30,10 @@ func main() {
 	tokenRepo := auth.NewRefreshTokenRepository(pool)
 	svc := auth.NewService(adminRepo, tokenRepo, cfg)
 	h := auth.NewHandler(svc, cfg)
+
+	categoryRepo := category.NewCategoryRepository(pool)
+	categorySvc := category.NewService(categoryRepo)
+	categoryHandler := category.NewHandler(categorySvc)
 
 	app := fiber.New(fiber.Config{
 		ErrorHandler: func(c *fiber.Ctx, err error) error {
@@ -55,6 +60,11 @@ func main() {
 	// Protected routes — require admin Bearer token
 	protected := v1.Group("", auth.RequireAdmin(cfg))
 	protected.Post("/auth/logout", h.Logout)
+
+	protected.Get("/categories", categoryHandler.List)
+	protected.Post("/categories", categoryHandler.Create)
+	protected.Patch("/categories/:id", categoryHandler.Rename)
+	protected.Delete("/categories/:id", categoryHandler.Delete)
 
 	port := os.Getenv("PORT")
 	if port == "" {

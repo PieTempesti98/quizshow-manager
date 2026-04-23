@@ -114,8 +114,10 @@ This project uses spec-driven development via specKit. Before implementing any f
 Spec files live in `specs/`. Never implement a feature without a spec file present.
 
 ## Active Technologies
-- Go 1.25 + gofiber/fiber v2, golang-jwt/jwt v5, jackc/pgx v5, google/uuid v1, golang.org/x/crypto (bcrypt — **missing from go.mod, must be added**) (001-admin-auth)
-- PostgreSQL — tables `admins`, `refresh_tokens` (migration 001 already covers both) (001-admin-auth)
+- Go 1.25 + gofiber/fiber v2, golang-jwt/jwt v5, jackc/pgx v5, google/uuid v1, golang.org/x/crypto (bcrypt) (001-admin-auth)
+- PostgreSQL — tables `admins`, `refresh_tokens`, `categories`, `questions` (all in migration 001) (001-admin-auth, 002-categories-crud)
+- `internal/category/` package — `models.go` (Category, CategoryWithCount, slugify, sentinel errors), `repository.go` (CategoryRepo interface + pgx impl), `service.go` (Service interface), `handler.go` (GET/POST/PATCH/DELETE handlers) (002-categories-crud)
 
 ## Recent Changes
-- 001-admin-auth: Added Go 1.25 + gofiber/fiber v2, golang-jwt/jwt v5, jackc/pgx v5, google/uuid v1, golang.org/x/crypto (bcrypt — **missing from go.mod, must be added**)
+- 001-admin-auth: Added Go 1.25 + gofiber/fiber v2, golang-jwt/jwt v5, jackc/pgx v5, google/uuid v1, golang.org/x/crypto (bcrypt)
+- 002-categories-crud: Implemented `internal/category/` package; registered 4 routes on existing protected group; no new migration required

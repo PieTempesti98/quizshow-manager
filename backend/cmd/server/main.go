@@ -12,6 +12,7 @@ import (
 	"github.com/PieTempesti98/quizshow/internal/auth"
 	"github.com/PieTempesti98/quizshow/internal/category"
 	"github.com/PieTempesti98/quizshow/internal/db"
+	"github.com/PieTempesti98/quizshow/internal/question"
 )
 
 func main() {
@@ -34,6 +35,10 @@ func main() {
 	categoryRepo := category.NewCategoryRepository(pool)
 	categorySvc := category.NewService(categoryRepo)
 	categoryHandler := category.NewHandler(categorySvc)
+
+	questionRepo := question.NewRepository(pool)
+	questionSvc := question.NewService(questionRepo)
+	questionHandler := question.NewHandler(questionSvc)
 
 	app := fiber.New(fiber.Config{
 		ErrorHandler: func(c *fiber.Ctx, err error) error {
@@ -65,6 +70,11 @@ func main() {
 	protected.Post("/categories", categoryHandler.Create)
 	protected.Patch("/categories/:id", categoryHandler.Rename)
 	protected.Delete("/categories/:id", categoryHandler.Delete)
+
+	protected.Get("/questions", questionHandler.List)
+	protected.Post("/questions", questionHandler.Create)
+	protected.Patch("/questions/:id", questionHandler.Update)
+	protected.Delete("/questions/:id", questionHandler.Delete)
 
 	port := os.Getenv("PORT")
 	if port == "" {

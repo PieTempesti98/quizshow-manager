@@ -7,9 +7,9 @@ Update it at the end of every Claude Code session.
 
 ## Current status
 
-**Phase:** Backend implementation in progress — auth + categories CRUD complete  
-**Last updated:** 2026-04-23  
-**Active branch:** `002-categories-crud` (ready to merge)
+**Phase:** Backend implementation in progress — auth + categories CRUD complete, questions CRUD spec + tasks done, implementation pending  
+**Last updated:** 2026-04-28  
+**Active branch:** `003-questions-crud` (spec ✅, tasks ✅, implementation not started)
 
 ---
 
@@ -156,8 +156,8 @@ Each item maps to one `/speckit.specify` invocation.
 | # | Feature | User stories | Phase | Status |
 |---|---|---|---|---|
 | 1 | Auth admin | US-A01, US-A02 | 1.2 | Done — smoke tested against live DB |
-| 2 | Categories CRUD | US-Q04 | 1.3 | Done — all 4 endpoints smoke tested |
-| 3 | Questions CRUD | US-Q01, US-Q02, US-Q05 | 1.3 | Not started |
+| 2 | Categories CRUD | US-Q04 | 1.3 | Done — all 4 endpoints smoke tested, merged to main |
+| 3 | Questions CRUD | US-Q01, US-Q02, US-Q05 | 1.3 | Spec ✅ Tasks ✅ — implementation pending (branch 003-questions-crud) |
 | 4 | Questions CSV import | US-Q03 | 1.3 | Not started |
 | 5 | Session create + configure | US-S01, US-S02 | 1.4 | Not started |
 | 6 | Session lifecycle (lobby → active) | US-S03 | 1.4 | Not started |
@@ -182,7 +182,7 @@ Each item maps to one `/speckit.specify` invocation.
 | 2026-04-20 | CSV import synchronous, max 500 rows | Sufficient for MVP scale; async job queue not justified |
 | 2026-04-20 | Stats on dedicated endpoints, not nested in session detail | Separation of concerns; avoids aggregation on every session fetch |
 | 2026-04-20 | `sessions.created_by` nullable FK to admins | MVP has one admin so visibility is global; field ready for R2 multi-admin filtering without migration |
-| 2026-04-23 | `internal/category/` package — 4-file layout mirroring auth | Consistent with established pattern; no ORM, raw pgx queries |
+| 2026-04-23 | `internal/category/` package — 4-file layout mirroring auth | Consistent with established pattern; no ORM, raw pgx queries — merged to main via PR #1 |
 | 2026-04-23 | `question_count` computed via LEFT JOIN at query time | Avoids denormalized counter maintenance; acceptable at MVP scale |
 | 2026-04-23 | `ErrCategoryHasQuestions` as struct (not var) | Carries blocking count for the error message without extra DB round-trip |
 
@@ -191,6 +191,7 @@ Each item maps to one `/speckit.specify` invocation.
 ## Next session checklist
 
 Before opening Claude Code:
-1. Merge `002-categories-crud` → `main` (or develop)
-2. `git checkout -b 003-questions-crud` from main
-3. `/speckit.specify` for feature #3 (Questions CRUD — US-Q01, US-Q02, US-Q05)
+1. Run `/speckit.implement` on branch `003-questions-crud` — all tasks in `specs/003-questions-crud/tasks.md` pending (T001–T020)
+2. Follow the incremental delivery order: T001 → T002–T005 (US1 list) → T006–T009 (US2 create) → T010–T013 (US3 edit) → T014–T017 (US4 delete) → T018–T020 (polish)
+3. After implementation, smoke test per `specs/003-questions-crud/quickstart.md`, then open PR → merge to `main`
+4. Next feature: Questions CSV import (feature #4 — US-Q03)

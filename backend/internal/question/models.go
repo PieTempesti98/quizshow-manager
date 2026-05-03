@@ -57,3 +57,36 @@ type QuestionUpdate struct {
 
 var ErrQuestionNotFound = errors.New("question not found")
 var ErrQuestionInUse = errors.New("question is in use by an active session")
+var ErrInvalidOnError = errors.New("on_error must be 'abort' or 'skip'")
+
+// ErrImportFileInvalid is returned by Import when the file itself is malformed
+// (wrong headers, too many rows, etc.) before any row is processed.
+type ErrImportFileInvalid struct{ Msg string }
+
+func (e *ErrImportFileInvalid) Error() string { return e.Msg }
+
+// ImportRow is one parsed data row from an uploaded CSV file.
+type ImportRow struct {
+	RowNumber    int
+	Text         string
+	OptionA      string
+	OptionB      string
+	OptionC      string
+	OptionD      string
+	CorrectIndex int
+	CategoryName string
+	Difficulty   string
+}
+
+// RowError is a single row-level problem (hard validation failure or soft warning).
+type RowError struct {
+	Row     int    `json:"row"`
+	Message string `json:"message"`
+}
+
+// ImportResult is the aggregate outcome of a CSV import operation.
+type ImportResult struct {
+	Imported int        `json:"imported"`
+	Skipped  int        `json:"skipped"`
+	Errors   []RowError `json:"errors"`
+}

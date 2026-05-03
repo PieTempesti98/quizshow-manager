@@ -69,6 +69,64 @@ var validDifficulties = map[string]bool{
 	"hard":   true,
 }
 
+const csvTemplateHeader = "text,option_a,option_b,option_c,option_d,correct_index,category_name,difficulty\n"
+
+// ImportTemplate handles GET /api/v1/questions/import/template.
+func (h *Handler) ImportTemplate(c *fiber.Ctx) error {
+	c.Set("Content-Type", "text/csv")
+	c.Set("Content-Disposition", `attachment; filename="questions_template.csv"`)
+	return c.SendString(csvTemplateHeader)
+}
+
+// Import handles POST /api/v1/questions/import.
+func (h *Handler) Import(c *fiber.Ctx) error {
+	onError := c.FormValue("on_error", "abort")
+	if onError != "abort" && onError != "skip" {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(api.ErrorResponse{
+			Error: api.ErrorDetail{Code: "VALIDATION_ERROR", Message: "on_error must be 'abort' or 'skip'"},
+		})
+	}
+
+	fileHeader, err := c.FormFile("file")
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(api.ErrorResponse{
+			Error: api.ErrorDetail{Code: "VALIDATION_ERROR", Message: "file: required multipart field missing"},
+		})
+	}
+	if fileHeader.Size > 5*1024*1024 {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(api.ErrorResponse{
+			Error: api.ErrorDetail{Code: "VALIDATION_ERROR", Message: "file exceeds maximum size of 5MB"},
+		})
+	}
+
+	file, err := fileHeader.Open()
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(api.ErrorResponse{
+			Error: api.ErrorDetail{Code: "INTERNAL_ERROR", Message: "an unexpected error occurred"},
+		})
+	}
+	defer file.Close()
+
+	result, err := h.svc.Import(c.Context(), file, onError)
+	if err != nil {
+		var fileErr *ErrImportFileInvalid
+		if errors.As(err, &fileErr) {
+			return c.Status(fiber.StatusUnprocessableEntity).JSON(api.ErrorResponse{
+				Error: api.ErrorDetail{Code: "VALIDATION_ERROR", Message: fileErr.Msg},
+			})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(api.ErrorResponse{
+			Error: api.ErrorDetail{Code: "INTERNAL_ERROR", Message: "an unexpected error occurred"},
+		})
+	}
+
+	if result.Errors == nil {
+		result.Errors = []RowError{}
+	}
+
+	return c.Status(fiber.StatusOK).JSON(api.DataResponse{Data: result})
+}
+
 // List handles GET /api/v1/questions.
 func (h *Handler) List(c *fiber.Ctx) error {
 	page := c.QueryInt("page", 1)

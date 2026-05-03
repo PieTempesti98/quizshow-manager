@@ -120,6 +120,8 @@ Spec files live in `specs/`. Never implement a feature without a spec file prese
 - Go 1.25 + gofiber/fiber v2, jackc/pgx v5, google/uuid v1 (003-questions-crud)
 - PostgreSQL — `questions`, `categories`, `session_questions`, `sessions` tables (all in migration 001, no new migration required) (003-questions-crud)
 - `internal/question/` package — `models.go` (Question, QuestionFilter, QuestionListResult, QuestionUpdate, sentinel errors), `repository.go` (QuestionRepo interface + pgx impl: List with dynamic WHERE/pagination, Create, FindByID, IsInActiveSession, Update with dynamic SET, Delete), `service.go` (Service interface + active-session guard on Update/Delete), `handler.go` (GET/POST/PATCH/DELETE handlers with full validation) (003-questions-crud)
+- Go 1.25 + gofiber/fiber v2, jackc/pgx v5, encoding/csv (stdlib), google/uuid v1 (004-questions-csv-import)
+- PostgreSQL — `questions` and `categories` tables (migration 001, no new migration) (004-questions-csv-import)
 
 ## Recent Changes
 - 001-admin-auth: Added Go 1.25 + gofiber/fiber v2, golang-jwt/jwt v5, jackc/pgx v5, google/uuid v1, golang.org/x/crypto (bcrypt)

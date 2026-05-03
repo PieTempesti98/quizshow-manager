@@ -7,9 +7,9 @@ Update it at the end of every Claude Code session.
 
 ## Current status
 
-**Phase:** Backend implementation in progress — auth + categories + questions CRUD complete, questions CSV import fully implemented and smoke tested  
-**Last updated:** 2026-05-03  
-**Active branch:** `004-questions-csv-import` (spec ✅, plan ✅, tasks ✅, implementation ✅, smoke test ✅ — PR pending)
+**Phase:** Backend implementation in progress — auth + categories + questions CRUD + CSV import complete  
+**Last updated:** 2026-05-04  
+**Active branch:** `develop` (pronto per feature #5 — session lifecycle)
 
 ---
 
@@ -56,10 +56,10 @@ Goal: working Go server with all REST endpoints, database, and auth. No frontend
 - [x] `POST /api/v1/categories`
 - [x] `PATCH /api/v1/categories/:id`
 - [x] `DELETE /api/v1/categories/:id`
-- [ ] `GET /api/v1/questions` (paginated + filtered)
-- [ ] `POST /api/v1/questions`
-- [ ] `PATCH /api/v1/questions/:id`
-- [ ] `DELETE /api/v1/questions/:id`
+- [x] `GET /api/v1/questions` (paginated + filtered)
+- [x] `POST /api/v1/questions`
+- [x] `PATCH /api/v1/questions/:id`
+- [x] `DELETE /api/v1/questions/:id`
 - [x] `POST /api/v1/questions/import` (CSV, synchronous, max 500 rows)
 - [x] `GET /api/v1/questions/import/template`
 
@@ -156,9 +156,9 @@ Each item maps to one `/speckit.specify` invocation.
 | # | Feature | User stories | Phase | Status |
 |---|---|---|---|---|
 | 1 | Auth admin | US-A01, US-A02 | 1.2 | Done — smoke tested against live DB |
-| 2 | Categories CRUD | US-Q04 | 1.3 | Done — all 4 endpoints smoke tested, merged to main |
-| 3 | Questions CRUD | US-Q01, US-Q02, US-Q05 | 1.3 | Spec ✅ Tasks ✅ — implementation pending (branch 003-questions-crud) |
-| 4 | Questions CSV import | US-Q03 | 1.3 | Implemented ✅ — smoke test + PR pending (branch 004-questions-csv-import) |
+| 2 | Categories CRUD | US-Q04 | 1.3 | Done — all 4 endpoints smoke tested, merged to develop |
+| 3 | Questions CRUD | US-Q01, US-Q02, US-Q05 | 1.3 | Done — merged to develop via PR #2 |
+| 4 | Questions CSV import | US-Q03 | 1.3 | Done — merged to develop via PR #3 |
 | 5 | Session create + configure | US-S01, US-S02 | 1.4 | Not started |
 | 6 | Session lifecycle (lobby → active) | US-S03 | 1.4 | Not started |
 | 7 | Presenter controls | US-P02, US-P03, US-P04, US-P05, US-P06 | 1.5 | Not started |
@@ -182,7 +182,7 @@ Each item maps to one `/speckit.specify` invocation.
 | 2026-04-20 | CSV import synchronous, max 500 rows | Sufficient for MVP scale; async job queue not justified |
 | 2026-04-20 | Stats on dedicated endpoints, not nested in session detail | Separation of concerns; avoids aggregation on every session fetch |
 | 2026-04-20 | `sessions.created_by` nullable FK to admins | MVP has one admin so visibility is global; field ready for R2 multi-admin filtering without migration |
-| 2026-04-23 | `internal/category/` package — 4-file layout mirroring auth | Consistent with established pattern; no ORM, raw pgx queries — merged to main via PR #1 |
+| 2026-04-23 | `internal/category/` package — 4-file layout mirroring auth | Consistent with established pattern; no ORM, raw pgx queries — merged to develop via PR #1 |
 | 2026-04-23 | `question_count` computed via LEFT JOIN at query time | Avoids denormalized counter maintenance; acceptable at MVP scale |
 | 2026-04-23 | `ErrCategoryHasQuestions` as struct (not var) | Carries blocking count for the error message without extra DB round-trip |
 
@@ -191,7 +191,6 @@ Each item maps to one `/speckit.specify` invocation.
 ## Next session checklist
 
 Before opening Claude Code:
-1. Open PR from `004-questions-csv-import` → `main` and merge
-2. Next feature: Session create + configure (feature #5 — US-S01, US-S02)
-3. After implementation, smoke test (upload template, abort-mode import, skip-mode import), then open PR → merge to `main`
-4. Next feature: Session create + configure (feature #5 — US-S01, US-S02)
+1. Run `/speckit.specify` per feature #5 — Session create + configure (US-S01, US-S02)
+2. Seguire il workflow: specify → plan → tasks → implement
+3. After implementation, smoke test then open PR → merge to `develop`

@@ -20,6 +20,10 @@ type QuestionRepo interface {
 	IsInActiveSession(ctx context.Context, id uuid.UUID) (bool, error)
 	Update(ctx context.Context, id uuid.UUID, u QuestionUpdate) (*Question, error)
 	Delete(ctx context.Context, id uuid.UUID) error
+	FindCategoryMap(ctx context.Context) (map[string]uuid.UUID, error)
+	CheckDuplicate(ctx context.Context, text string, categoryID uuid.UUID) (bool, error)
+	CreateBatch(ctx context.Context, tx pgx.Tx, questions []Question) error
+	BeginTx(ctx context.Context) (pgx.Tx, error)
 }
 
 // QuestionRepository implements QuestionRepo using a pgxpool.Pool.
@@ -296,4 +300,66 @@ func (r *QuestionRepository) Delete(ctx context.Context, id uuid.UUID) error {
 		return ErrQuestionNotFound
 	}
 	return nil
+}
+
+func (r *QuestionRepository) FindCategoryMap(ctx context.Context) (map[string]uuid.UUID, error) {
+	const q = `SELECT id, LOWER(name) FROM categories WHERE deleted_at IS NULL`
+
+	rows, err := r.pool.Query(ctx, q)
+	if err != nil {
+		return nil, fmt.Errorf("question repo: find category map: %w", err)
+	}
+	defer rows.Close()
+
+	m := make(map[string]uuid.UUID)
+	for rows.Next() {
+		var id uuid.UUID
+		var name string
+		if err := rows.Scan(&id, &name); err != nil {
+			return nil, fmt.Errorf("question repo: find category map scan: %w", err)
+		}
+		m[name] = id
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("question repo: find category map: %w", err)
+	}
+	return m, nil
+}
+
+func (r *QuestionRepository) CheckDuplicate(ctx context.Context, text string, categoryID uuid.UUID) (bool, error) {
+	const q = `
+		SELECT EXISTS(
+			SELECT 1 FROM questions
+			WHERE LOWER(text) = LOWER($1) AND category_id = $2 AND deleted_at IS NULL
+		)`
+
+	var exists bool
+	if err := r.pool.QueryRow(ctx, q, text, categoryID).Scan(&exists); err != nil {
+		return false, fmt.Errorf("question repo: check duplicate: %w", err)
+	}
+	return exists, nil
+}
+
+func (r *QuestionRepository) CreateBatch(ctx context.Context, tx pgx.Tx, questions []Question) error {
+	const insertQ = `
+		INSERT INTO questions (category_id, text, option_a, option_b, option_c, option_d, correct_index, difficulty)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8::difficulty_level)`
+
+	for _, q := range questions {
+		if _, err := tx.Exec(ctx, insertQ,
+			q.CategoryID, q.Text, q.OptionA, q.OptionB, q.OptionC, q.OptionD,
+			q.CorrectIndex, q.Difficulty,
+		); err != nil {
+			return fmt.Errorf("question repo: create batch: %w", err)
+		}
+	}
+	return nil
+}
+
+func (r *QuestionRepository) BeginTx(ctx context.Context) (pgx.Tx, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("question repo: begin tx: %w", err)
+	}
+	return tx, nil
 }

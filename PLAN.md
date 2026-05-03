@@ -7,9 +7,9 @@ Update it at the end of every Claude Code session.
 
 ## Current status
 
-**Phase:** Backend implementation in progress — auth + categories CRUD complete, questions CRUD spec + tasks done, implementation pending  
-**Last updated:** 2026-04-28  
-**Active branch:** `003-questions-crud` (spec ✅, tasks ✅, implementation not started)
+**Phase:** Backend implementation in progress — auth + categories + questions CRUD complete, questions CSV import fully implemented and smoke tested  
+**Last updated:** 2026-05-03  
+**Active branch:** `004-questions-csv-import` (spec ✅, plan ✅, tasks ✅, implementation ✅, smoke test ✅ — PR pending)
 
 ---
 
@@ -60,8 +60,8 @@ Goal: working Go server with all REST endpoints, database, and auth. No frontend
 - [ ] `POST /api/v1/questions`
 - [ ] `PATCH /api/v1/questions/:id`
 - [ ] `DELETE /api/v1/questions/:id`
-- [ ] `POST /api/v1/questions/import` (CSV, synchronous, max 500 rows)
-- [ ] `GET /api/v1/questions/import/template`
+- [x] `POST /api/v1/questions/import` (CSV, synchronous, max 500 rows)
+- [x] `GET /api/v1/questions/import/template`
 
 #### 1.4 Session lifecycle (US-S01–US-S04)
 - [ ] `POST /api/v1/sessions`
@@ -158,7 +158,7 @@ Each item maps to one `/speckit.specify` invocation.
 | 1 | Auth admin | US-A01, US-A02 | 1.2 | Done — smoke tested against live DB |
 | 2 | Categories CRUD | US-Q04 | 1.3 | Done — all 4 endpoints smoke tested, merged to main |
 | 3 | Questions CRUD | US-Q01, US-Q02, US-Q05 | 1.3 | Spec ✅ Tasks ✅ — implementation pending (branch 003-questions-crud) |
-| 4 | Questions CSV import | US-Q03 | 1.3 | Not started |
+| 4 | Questions CSV import | US-Q03 | 1.3 | Implemented ✅ — smoke test + PR pending (branch 004-questions-csv-import) |
 | 5 | Session create + configure | US-S01, US-S02 | 1.4 | Not started |
 | 6 | Session lifecycle (lobby → active) | US-S03 | 1.4 | Not started |
 | 7 | Presenter controls | US-P02, US-P03, US-P04, US-P05, US-P06 | 1.5 | Not started |
@@ -191,7 +191,7 @@ Each item maps to one `/speckit.specify` invocation.
 ## Next session checklist
 
 Before opening Claude Code:
-1. Run `/speckit.implement` on branch `003-questions-crud` — all tasks in `specs/003-questions-crud/tasks.md` pending (T001–T020)
-2. Follow the incremental delivery order: T001 → T002–T005 (US1 list) → T006–T009 (US2 create) → T010–T013 (US3 edit) → T014–T017 (US4 delete) → T018–T020 (polish)
-3. After implementation, smoke test per `specs/003-questions-crud/quickstart.md`, then open PR → merge to `main`
-4. Next feature: Questions CSV import (feature #4 — US-Q03)
+1. Open PR from `004-questions-csv-import` → `main` and merge
+2. Next feature: Session create + configure (feature #5 — US-S01, US-S02)
+3. After implementation, smoke test (upload template, abort-mode import, skip-mode import), then open PR → merge to `main`
+4. Next feature: Session create + configure (feature #5 — US-S01, US-S02)

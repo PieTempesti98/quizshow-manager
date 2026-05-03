@@ -41,6 +41,7 @@ func main() {
 	questionHandler := question.NewHandler(questionSvc)
 
 	app := fiber.New(fiber.Config{
+		BodyLimit: 6 * 1024 * 1024, // 6MB: allows 5MB CSV + multipart overhead
 		ErrorHandler: func(c *fiber.Ctx, err error) error {
 			code := fiber.StatusInternalServerError
 			if e, ok := err.(*fiber.Error); ok {
@@ -62,6 +63,9 @@ func main() {
 	authGroup.Post("/login", h.Login)
 	authGroup.Post("/refresh", h.Refresh)
 
+	// Public: no auth required (must be registered before the protected group)
+	v1.Get("/questions/import/template", questionHandler.ImportTemplate)
+
 	// Protected routes — require admin Bearer token
 	protected := v1.Group("", auth.RequireAdmin(cfg))
 	protected.Post("/auth/logout", h.Logout)
@@ -75,6 +79,7 @@ func main() {
 	protected.Post("/questions", questionHandler.Create)
 	protected.Patch("/questions/:id", questionHandler.Update)
 	protected.Delete("/questions/:id", questionHandler.Delete)
+	protected.Post("/questions/import", questionHandler.Import)
 
 	port := os.Getenv("PORT")
 	if port == "" {

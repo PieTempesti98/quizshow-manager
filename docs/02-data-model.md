@@ -104,6 +104,7 @@ A quiz session, from draft through completion.
 | `speed_bonus_enabled` | `BOOLEAN` | Default false |
 | `started_at` | `TIMESTAMPTZ` | Set when status → active |
 | `ended_at` | `TIMESTAMPTZ` | Set when status → completed/cancelled |
+| `created_by` | `UUID` | FK → `admins.id`, nullable — null = legacy/seeded row |
 | `created_at` | `TIMESTAMPTZ` | |
 | `updated_at` | `TIMESTAMPTZ` | |
 | `deleted_at` | `TIMESTAMPTZ` | |
@@ -270,6 +271,7 @@ CREATE TABLE sessions (
     speed_bonus_enabled     BOOLEAN NOT NULL DEFAULT false,
     started_at              TIMESTAMPTZ,
     ended_at                TIMESTAMPTZ,
+    created_by              UUID REFERENCES admins(id) ON DELETE SET NULL,
     created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted_at              TIMESTAMPTZ
@@ -431,6 +433,7 @@ WHERE sc.session_id = $1
 | `questions` | `questions_category_id_idx` | Partial B-tree | Filter by category |
 | `sessions` | `sessions_pin_active_unique` | Partial unique | PIN validation on join |
 | `sessions` | `sessions_status_idx` | Partial B-tree | Filter active sessions |
+| `sessions` | `sessions_created_by_idx` | Partial B-tree | Filter sessions by admin (R2) |
 | `session_questions` | `session_questions_session_id_idx` | B-tree | Load session questions |
 | `players` | `players_session_id_idx` | B-tree | Load session players |
 | `answers` | `answers_session_question_id_idx` | B-tree | Load answers for question |
@@ -457,3 +460,15 @@ ALTER TABLE players ADD COLUMN user_id UUID REFERENCES users(id);
 ```
 
 No existing queries break — `user_id` is nullable and existing code ignores it.
+
+When multi-admin session visibility is introduced in R2:
+
+`sessions.created_by` is already present and indexed. Enabling per-admin filtering
+requires only a query change — no schema migration needed:
+
+```sql
+-- R2: filter sessions by owning admin
+SELECT * FROM sessions
+WHERE created_by = $1
+  AND deleted_at IS NULL;
+```

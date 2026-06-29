@@ -7,9 +7,9 @@ Update it at the end of every Claude Code session.
 
 ## Current status
 
-**Phase:** Design complete — specKit initialized — ready for first feature spec
-**Last updated:** 2025-04-20
-**Active branch:** `main` (scaffold only, no implementation yet)
+**Phase:** Backend implementation in progress — auth + categories + questions CRUD + CSV import + session CRUD complete  
+**Last updated:** 2026-06-29  
+**Active branch:** `main` (integration branch — feature #5 merged)
 
 ---
 
@@ -37,36 +37,38 @@ Goal: working Go server with all REST endpoints, database, and auth. No frontend
 #### 1.1 Project bootstrap
 - [x] `specify init . --ai claude` — initialize specKit
 - [x] `/speckit.constitution` — consolidate principles from `.specify/constitution.md`
-- [ ] Go module init (`go mod init github.com/yourname/quizshow`)
-- [ ] Fiber server skeleton in `backend/cmd/server/`
-- [ ] Docker Compose wired up: backend + PostgreSQL
-- [ ] `golang-migrate` configured, migration 001 runs cleanly
+- [x] Go module init (`go mod init github.com/PieTempesti98/quizshow`)
+- [x] Fiber server skeleton in `backend/cmd/server/`
+- [x] Docker Compose wired up: backend + PostgreSQL (healthcheck, restart-safe)
+- [x] `backend/Dockerfile` multi-stage build created
+- [x] Migration 001 applied — schema live in dev DB
 
 #### 1.2 Auth (US-A01, US-A02)
-- [ ] `POST /api/v1/auth/login`
-- [ ] `POST /api/v1/auth/refresh`
-- [ ] `POST /api/v1/auth/logout`
-- [ ] JWT middleware (admin role)
-- [ ] Admin seed on first run (from env vars)
+- [x] `POST /api/v1/auth/login`
+- [x] `POST /api/v1/auth/refresh`
+- [x] `POST /api/v1/auth/logout`
+- [x] JWT middleware (`RequireAdmin`)
+- [x] Admin seed on first run (from env vars)
+- [x] End-to-end smoke test against live Docker DB — passed
 
 #### 1.3 Question management (US-Q01–US-Q05)
-- [ ] `GET /api/v1/categories`
-- [ ] `POST /api/v1/categories`
-- [ ] `PATCH /api/v1/categories/:id`
-- [ ] `DELETE /api/v1/categories/:id`
-- [ ] `GET /api/v1/questions` (paginated + filtered)
-- [ ] `POST /api/v1/questions`
-- [ ] `PATCH /api/v1/questions/:id`
-- [ ] `DELETE /api/v1/questions/:id`
-- [ ] `POST /api/v1/questions/import` (CSV, sincrono, max 500 righe)
-- [ ] `GET /api/v1/questions/import/template`
+- [x] `GET /api/v1/categories`
+- [x] `POST /api/v1/categories`
+- [x] `PATCH /api/v1/categories/:id`
+- [x] `DELETE /api/v1/categories/:id`
+- [x] `GET /api/v1/questions` (paginated + filtered)
+- [x] `POST /api/v1/questions`
+- [x] `PATCH /api/v1/questions/:id`
+- [x] `DELETE /api/v1/questions/:id`
+- [x] `POST /api/v1/questions/import` (CSV, synchronous, max 500 rows)
+- [x] `GET /api/v1/questions/import/template`
 
 #### 1.4 Session lifecycle (US-S01–US-S04)
-- [ ] `POST /api/v1/sessions`
-- [ ] `GET /api/v1/sessions`
-- [ ] `GET /api/v1/sessions/:id`
-- [ ] `PATCH /api/v1/sessions/:id`
-- [ ] `DELETE /api/v1/sessions/:id`
+- [x] `POST /api/v1/sessions`
+- [x] `GET /api/v1/sessions`
+- [x] `GET /api/v1/sessions/:id`
+- [x] `PATCH /api/v1/sessions/:id`
+- [x] `DELETE /api/v1/sessions/:id`
 - [ ] `POST /api/v1/sessions/:id/open-lobby`
 - [ ] `GET /api/v1/sessions/:id/qr`
 - [ ] `POST /api/v1/sessions/:id/launch` (question draw + projection token)
@@ -153,11 +155,11 @@ Each item maps to one `/speckit.specify` invocation.
 
 | # | Feature | User stories | Phase | Status |
 |---|---|---|---|---|
-| 1 | Auth admin | US-A01, US-A02 | 1.2 | Not started |
-| 2 | Categories CRUD | US-Q04 | 1.3 | Not started |
-| 3 | Questions CRUD | US-Q01, US-Q02, US-Q05 | 1.3 | Not started |
-| 4 | Questions CSV import | US-Q03 | 1.3 | Not started |
-| 5 | Session create + configure | US-S01, US-S02 | 1.4 | Not started |
+| 1 | Auth admin | US-A01, US-A02 | 1.2 | Done — smoke tested against live DB |
+| 2 | Categories CRUD | US-Q04 | 1.3 | Done — all 4 endpoints smoke tested, merged to main |
+| 3 | Questions CRUD | US-Q01, US-Q02, US-Q05 | 1.3 | Done — merged to main via PR #2 |
+| 4 | Questions CSV import | US-Q03 | 1.3 | Done — merged to main via PR #3 |
+| 5 | Session create + configure | US-S01, US-S02 | 1.4 | Done — 15/15 smoke tests passed, merged to main via PR #4 |
 | 6 | Session lifecycle (lobby → active) | US-S03 | 1.4 | Not started |
 | 7 | Presenter controls | US-P02, US-P03, US-P04, US-P05, US-P06 | 1.5 | Not started |
 | 8 | Player join + answer | US-PL01, US-PL03 | 1.6 | Not started |
@@ -170,22 +172,25 @@ Each item maps to one `/speckit.specify` invocation.
 
 | Date | Decision | Rationale |
 |---|---|---|
-| 2025-04-20 | Go + Fiber for backend | Native concurrency for WebSocket hubs, clean path to microservices |
-| 2025-04-20 | JWT self-issued in MVP, Keycloak in R2 | Issuer-agnostic middleware — upgrade requires only env var change |
-| 2025-04-20 | Player identity ephemeral in MVP | No registration friction; token issued on join, TTL 4h |
-| 2025-04-20 | Projection Screen gets temporary token at launch | Security without operational complexity of full auth |
-| 2025-04-20 | REST for presenter commands, WebSocket push-only | Idempotency and explicit error handling for state mutations |
-| 2025-04-20 | Speed bonus linear (not tiered, not rank-based) | No cliff edges, independent of other players, trivially unit-testable |
-| 2025-04-20 | Difficulty = filter only in MVP | UX simplicity; multiplier + balanced pool planned for R2 |
-| 2025-04-20 | CSV import synchronous, max 500 rows | Sufficient for MVP scale; async job queue not justified |
-| 2025-04-20 | Stats on dedicated endpoints, not nested in session detail | Separation of concerns; avoids aggregation on every session fetch |
+| 2026-04-20 | Go + Fiber for backend | Native concurrency for WebSocket hubs, clean path to microservices |
+| 2026-04-20 | JWT self-issued in MVP, Keycloak in R2 | Issuer-agnostic middleware — upgrade requires only env var change |
+| 2026-04-20 | Player identity ephemeral in MVP | No registration friction; token issued on join, TTL 4h |
+| 2026-04-20 | Projection Screen gets temporary token at launch | Security without operational complexity of full auth |
+| 2026-04-20 | REST for presenter commands, WebSocket push-only | Idempotency and explicit error handling for state mutations |
+| 2026-04-20 | Speed bonus linear (not tiered, not rank-based) | No cliff edges, independent of other players, trivially unit-testable |
+| 2026-04-20 | Difficulty = filter only in MVP | UX simplicity; multiplier + balanced pool planned for R2 |
+| 2026-04-20 | CSV import synchronous, max 500 rows | Sufficient for MVP scale; async job queue not justified |
+| 2026-04-20 | Stats on dedicated endpoints, not nested in session detail | Separation of concerns; avoids aggregation on every session fetch |
+| 2026-04-20 | `sessions.created_by` nullable FK to admins | MVP has one admin so visibility is global; field ready for R2 multi-admin filtering without migration |
+| 2026-04-23 | `internal/category/` package — 4-file layout mirroring auth | Consistent with established pattern; no ORM, raw pgx queries — merged to main via PR #1 |
+| 2026-04-23 | `question_count` computed via LEFT JOIN at query time | Avoids denormalized counter maintenance; acceptable at MVP scale |
+| 2026-04-23 | `ErrCategoryHasQuestions` as struct (not var) | Carries blocking count for the error message without extra DB round-trip |
 
 ---
 
 ## Next session checklist
 
 Before opening Claude Code:
-1. `git status` — confirm scaffold is clean
-2. `docker-compose up db` — PostgreSQL running
-3. Open this file and pick the first unchecked item in Phase 1
-4. Run `/speckit.specify` for feature #1 (auth admin)
+1. Run `/speckit.specify` for feature #6 — Session lifecycle (lobby → active) (US-S03)
+2. Follow the workflow: specify → plan → tasks → implement
+3. After implementation, smoke test then open PR → merge to main

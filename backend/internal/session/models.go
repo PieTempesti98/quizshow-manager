@@ -73,6 +73,39 @@ type SessionUpdate struct {
 }
 
 var (
-	ErrSessionNotFound = errors.New("session not found")
-	ErrSessionNotDraft = errors.New("session is not in draft status")
+	ErrSessionNotFound       = errors.New("session not found")
+	ErrSessionNotDraft       = errors.New("session is not in draft status")
+	ErrSessionNotInLobby     = errors.New("session is not in lobby status")
+	ErrInsufficientQuestions = errors.New("no questions available in the configured categories")
 )
+
+// OpenLobbyResult is returned by Service.OpenLobby.
+type OpenLobbyResult struct {
+	SessionID string
+	PIN       string
+	QRCodeURL string
+	Status    string
+}
+
+// LaunchResult is returned by Service.Launch.
+type LaunchResult struct {
+	SessionID       string
+	Status          string
+	QuestionCount   int
+	ProjectionToken string
+	ProjectionURL   string
+	StartedAt       time.Time
+}
+
+// SessionEventBroadcaster notifies connected clients of session state changes.
+// NoopBroadcaster is injected until the WebSocket hub is implemented in feature #10.
+type SessionEventBroadcaster interface {
+	BroadcastSessionStarted(sessionID string, totalQuestions int)
+}
+
+type noopBroadcaster struct{}
+
+func (noopBroadcaster) BroadcastSessionStarted(string, int) {}
+
+// NewNoopBroadcaster returns a SessionEventBroadcaster that does nothing.
+func NewNoopBroadcaster() SessionEventBroadcaster { return noopBroadcaster{} }

@@ -339,6 +339,110 @@ func (h *Handler) Delete(c *fiber.Ctx) error {
 	})
 }
 
+// OpenLobby handles POST /api/v1/sessions/:id/open-lobby.
+func (h *Handler) OpenLobby(c *fiber.Ctx) error {
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(api.ErrorResponse{
+			Error: api.ErrorDetail{Code: "VALIDATION_ERROR", Message: "id: must be a valid UUID"},
+		})
+	}
+
+	result, err := h.svc.OpenLobby(c.Context(), id)
+	if err != nil {
+		if errors.Is(err, ErrSessionNotFound) {
+			return c.Status(fiber.StatusNotFound).JSON(api.ErrorResponse{
+				Error: api.ErrorDetail{Code: "NOT_FOUND", Message: "session not found"},
+			})
+		}
+		if errors.Is(err, ErrSessionNotDraft) {
+			return c.Status(fiber.StatusConflict).JSON(api.ErrorResponse{
+				Error: api.ErrorDetail{Code: "SESSION_NOT_DRAFT", Message: "session cannot be opened in its current status"},
+			})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(api.ErrorResponse{
+			Error: api.ErrorDetail{Code: "INTERNAL_ERROR", Message: "an unexpected error occurred"},
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(api.DataResponse{
+		Data: map[string]string{
+			"session_id":  result.SessionID,
+			"pin":         result.PIN,
+			"qr_code_url": result.QRCodeURL,
+			"status":      result.Status,
+		},
+	})
+}
+
+// GetQR handles GET /api/v1/sessions/:id/qr.
+func (h *Handler) GetQR(c *fiber.Ctx) error {
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(api.ErrorResponse{
+			Error: api.ErrorDetail{Code: "VALIDATION_ERROR", Message: "id: must be a valid UUID"},
+		})
+	}
+
+	png, err := h.svc.GetQR(c.Context(), id)
+	if err != nil {
+		if errors.Is(err, ErrSessionNotFound) {
+			return c.Status(fiber.StatusNotFound).JSON(api.ErrorResponse{
+				Error: api.ErrorDetail{Code: "NOT_FOUND", Message: "session not found"},
+			})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(api.ErrorResponse{
+			Error: api.ErrorDetail{Code: "INTERNAL_ERROR", Message: "an unexpected error occurred"},
+		})
+	}
+
+	c.Set("Content-Type", "image/png")
+	return c.Status(fiber.StatusOK).Send(png)
+}
+
+// Launch handles POST /api/v1/sessions/:id/launch.
+func (h *Handler) Launch(c *fiber.Ctx) error {
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(api.ErrorResponse{
+			Error: api.ErrorDetail{Code: "VALIDATION_ERROR", Message: "id: must be a valid UUID"},
+		})
+	}
+
+	result, err := h.svc.Launch(c.Context(), id)
+	if err != nil {
+		if errors.Is(err, ErrSessionNotFound) {
+			return c.Status(fiber.StatusNotFound).JSON(api.ErrorResponse{
+				Error: api.ErrorDetail{Code: "NOT_FOUND", Message: "session not found"},
+			})
+		}
+		if errors.Is(err, ErrSessionNotInLobby) {
+			return c.Status(fiber.StatusConflict).JSON(api.ErrorResponse{
+				Error: api.ErrorDetail{Code: "SESSION_NOT_IN_LOBBY", Message: "session cannot be launched in its current status"},
+			})
+		}
+		if errors.Is(err, ErrInsufficientQuestions) {
+			return c.Status(fiber.StatusUnprocessableEntity).JSON(api.ErrorResponse{
+				Error: api.ErrorDetail{Code: "INSUFFICIENT_QUESTIONS", Message: "no questions available in the configured categories"},
+			})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(api.ErrorResponse{
+			Error: api.ErrorDetail{Code: "INTERNAL_ERROR", Message: "an unexpected error occurred"},
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(api.DataResponse{
+		Data: map[string]any{
+			"session_id":       result.SessionID,
+			"status":           result.Status,
+			"question_count":   result.QuestionCount,
+			"projection_token": result.ProjectionToken,
+			"projection_url":   result.ProjectionURL,
+			"started_at":       result.StartedAt.UTC().Format("2006-01-02T15:04:05Z"),
+		},
+	})
+}
+
 // --- helpers ---
 
 func parseCategoryIDs(raw []string) ([]uuid.UUID, error) {

@@ -77,6 +77,35 @@ func HashToken(raw string) string {
 	return hex.EncodeToString(h[:])
 }
 
+// projectionClaims is the JWT payload for a projection screen token.
+type projectionClaims struct {
+	SessionID string `json:"session_id"`
+	Role      string `json:"role"`
+	jwt.RegisteredClaims
+}
+
+// IssueProjectionToken issues a 12-hour JWT for the projection screen of a specific session.
+// PLACEHOLDER: the projection frontend does not exist yet; token will be used in feature #10.
+func IssueProjectionToken(sessionID uuid.UUID, cfg Config) (string, error) {
+	now := time.Now().UTC()
+	claims := projectionClaims{
+		SessionID: sessionID.String(),
+		Role:      "projection",
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    cfg.JWTIssuer,
+			Subject:   sessionID.String(),
+			ExpiresAt: jwt.NewNumericDate(now.Add(12 * time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(now),
+		},
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	signed, err := token.SignedString(cfg.JWTSecret)
+	if err != nil {
+		return "", fmt.Errorf("issue projection token: %w", err)
+	}
+	return signed, nil
+}
+
 // ValidateClaims parses and validates a JWT, returning the embedded AdminClaims.
 // Returns an error if the token is expired, has an invalid signature, or wrong issuer.
 func ValidateClaims(tokenString string, cfg Config) (AdminClaims, error) {

@@ -41,8 +41,14 @@ func main() {
 	questionSvc := question.NewService(questionRepo)
 	questionHandler := question.NewHandler(questionSvc)
 
+	// PLACEHOLDER: update PLAYER_APP_BASE_URL when the player frontend is deployed.
+	playerURL := os.Getenv("PLAYER_APP_BASE_URL")
+	if playerURL == "" {
+		playerURL = "http://localhost:5173"
+	}
+
 	sessionRepo := session.NewRepository(pool)
-	sessionSvc := session.NewService(sessionRepo)
+	sessionSvc := session.NewService(sessionRepo, cfg, playerURL, session.NewNoopBroadcaster())
 	sessionHandler := session.NewHandler(sessionSvc)
 
 	app := fiber.New(fiber.Config{
@@ -70,6 +76,7 @@ func main() {
 
 	// Public: no auth required (must be registered before the protected group)
 	v1.Get("/questions/import/template", questionHandler.ImportTemplate)
+	v1.Get("/sessions/:id/qr", sessionHandler.GetQR)
 
 	// Protected routes — require admin Bearer token
 	protected := v1.Group("", auth.RequireAdmin(cfg))
@@ -91,6 +98,8 @@ func main() {
 	protected.Get("/sessions/:id", sessionHandler.FindByID)
 	protected.Patch("/sessions/:id", sessionHandler.Update)
 	protected.Delete("/sessions/:id", sessionHandler.Delete)
+	protected.Post("/sessions/:id/open-lobby", sessionHandler.OpenLobby)
+	protected.Post("/sessions/:id/launch", sessionHandler.Launch)
 
 	port := os.Getenv("PORT")
 	if port == "" {

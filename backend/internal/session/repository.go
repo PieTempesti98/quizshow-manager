@@ -22,6 +22,8 @@ type SessionRepo interface {
 	Delete(ctx context.Context, id uuid.UUID) error
 	CountAvailableQuestions(ctx context.Context, sessionID uuid.UUID) (int, error)
 	ValidateCategoryIDs(ctx context.Context, ids []uuid.UUID) error
+	OpenLobby(ctx context.Context, id uuid.UUID) (Session, error)
+	Launch(ctx context.Context, id uuid.UUID) (Session, int, error)
 }
 
 // SessionRepository implements SessionRepo using pgxpool.
@@ -353,6 +355,127 @@ func (r *SessionRepository) updateSessionFields(ctx context.Context, qr queryRun
 		return Session{}, fmt.Errorf("session repo: update fields: %w", err)
 	}
 	return sess, nil
+}
+
+func (r *SessionRepository) OpenLobby(ctx context.Context, id uuid.UUID) (Session, error) {
+	const q = `
+		UPDATE sessions
+		SET status = 'lobby', updated_at = now()
+		WHERE id = $1
+		  AND status = 'draft'
+		  AND deleted_at IS NULL
+		RETURNING id, name, pin, status::text, question_count, time_per_question_s,
+		          points_per_answer, speed_bonus_enabled, started_at, ended_at,
+		          created_by, created_at, updated_at, deleted_at`
+
+	var sess Session
+	err := r.pool.QueryRow(ctx, q, id).Scan(
+		&sess.ID, &sess.Name, &sess.PIN, &sess.Status,
+		&sess.QuestionCount, &sess.TimePerQuestionS, &sess.PointsPerAnswer,
+		&sess.SpeedBonusEnabled, &sess.StartedAt, &sess.EndedAt,
+		&sess.CreatedBy, &sess.CreatedAt, &sess.UpdatedAt, &sess.DeletedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		// Distinguish 404 (not found) from 409 (wrong status).
+		var exists bool
+		_ = r.pool.QueryRow(ctx,
+			`SELECT EXISTS(SELECT 1 FROM sessions WHERE id = $1 AND deleted_at IS NULL)`, id,
+		).Scan(&exists)
+		if !exists {
+			return Session{}, ErrSessionNotFound
+		}
+		return Session{}, ErrSessionNotDraft
+	}
+	if err != nil {
+		return Session{}, fmt.Errorf("session repo: open lobby: %w", err)
+	}
+	return sess, nil
+}
+
+func (r *SessionRepository) Launch(ctx context.Context, id uuid.UUID) (Session, int, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return Session{}, 0, fmt.Errorf("session repo: launch begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var status string
+	var questionCount int16
+	err = tx.QueryRow(ctx,
+		`SELECT status::text, question_count FROM sessions WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
+		id,
+	).Scan(&status, &questionCount)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Session{}, 0, ErrSessionNotFound
+	}
+	if err != nil {
+		return Session{}, 0, fmt.Errorf("session repo: launch lock: %w", err)
+	}
+	if status != "lobby" {
+		return Session{}, 0, ErrSessionNotInLobby
+	}
+
+	// Draw questions randomly — use all available if fewer than question_count.
+	const drawQ = `
+		SELECT q.id
+		FROM questions q
+		JOIN session_categories sc ON sc.category_id = q.category_id
+		WHERE sc.session_id = $1
+		  AND q.deleted_at IS NULL
+		ORDER BY RANDOM()
+		LIMIT $2`
+
+	rows, err := tx.Query(ctx, drawQ, id, questionCount)
+	if err != nil {
+		return Session{}, 0, fmt.Errorf("session repo: launch draw: %w", err)
+	}
+	var questionIDs []uuid.UUID
+	for rows.Next() {
+		var qID uuid.UUID
+		if err := rows.Scan(&qID); err != nil {
+			rows.Close()
+			return Session{}, 0, fmt.Errorf("session repo: launch draw scan: %w", err)
+		}
+		questionIDs = append(questionIDs, qID)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return Session{}, 0, fmt.Errorf("session repo: launch draw: %w", err)
+	}
+	if len(questionIDs) == 0 {
+		return Session{}, 0, ErrInsufficientQuestions
+	}
+
+	const insertSQ = `INSERT INTO session_questions (session_id, question_id, position) VALUES ($1, $2, $3)`
+	for i, qID := range questionIDs {
+		if _, err := tx.Exec(ctx, insertSQ, id, qID, i+1); err != nil {
+			return Session{}, 0, fmt.Errorf("session repo: launch insert question %d: %w", i+1, err)
+		}
+	}
+
+	const activateQ = `
+		UPDATE sessions
+		SET status = 'active', started_at = now(), updated_at = now()
+		WHERE id = $1
+		RETURNING id, name, pin, status::text, question_count, time_per_question_s,
+		          points_per_answer, speed_bonus_enabled, started_at, ended_at,
+		          created_by, created_at, updated_at, deleted_at`
+
+	var sess Session
+	err = tx.QueryRow(ctx, activateQ, id).Scan(
+		&sess.ID, &sess.Name, &sess.PIN, &sess.Status,
+		&sess.QuestionCount, &sess.TimePerQuestionS, &sess.PointsPerAnswer,
+		&sess.SpeedBonusEnabled, &sess.StartedAt, &sess.EndedAt,
+		&sess.CreatedBy, &sess.CreatedAt, &sess.UpdatedAt, &sess.DeletedAt,
+	)
+	if err != nil {
+		return Session{}, 0, fmt.Errorf("session repo: launch activate: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return Session{}, 0, fmt.Errorf("session repo: launch commit: %w", err)
+	}
+	return sess, len(questionIDs), nil
 }
 
 func (r *SessionRepository) Delete(ctx context.Context, id uuid.UUID) error {

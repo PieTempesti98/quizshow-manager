@@ -13,6 +13,7 @@ import (
 	"github.com/PieTempesti98/quizshow/internal/category"
 	"github.com/PieTempesti98/quizshow/internal/db"
 	"github.com/PieTempesti98/quizshow/internal/question"
+	"github.com/PieTempesti98/quizshow/internal/session"
 )
 
 func main() {
@@ -39,6 +40,10 @@ func main() {
 	questionRepo := question.NewRepository(pool)
 	questionSvc := question.NewService(questionRepo)
 	questionHandler := question.NewHandler(questionSvc)
+
+	sessionRepo := session.NewRepository(pool)
+	sessionSvc := session.NewService(sessionRepo)
+	sessionHandler := session.NewHandler(sessionSvc)
 
 	app := fiber.New(fiber.Config{
 		BodyLimit: 6 * 1024 * 1024, // 6MB: allows 5MB CSV + multipart overhead
@@ -80,6 +85,12 @@ func main() {
 	protected.Patch("/questions/:id", questionHandler.Update)
 	protected.Delete("/questions/:id", questionHandler.Delete)
 	protected.Post("/questions/import", questionHandler.Import)
+
+	protected.Post("/sessions", sessionHandler.Create)
+	protected.Get("/sessions", sessionHandler.List)
+	protected.Get("/sessions/:id", sessionHandler.FindByID)
+	protected.Patch("/sessions/:id", sessionHandler.Update)
+	protected.Delete("/sessions/:id", sessionHandler.Delete)
 
 	port := os.Getenv("PORT")
 	if port == "" {

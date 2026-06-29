@@ -7,9 +7,9 @@ Update it at the end of every Claude Code session.
 
 ## Current status
 
-**Phase:** Backend implementation in progress — auth + categories + questions CRUD + CSV import complete  
-**Last updated:** 2026-05-04  
-**Active branch:** `develop` (pronto per feature #5 — session lifecycle)
+**Phase:** Backend implementation in progress — auth + categories + questions CRUD + CSV import + session CRUD complete  
+**Last updated:** 2026-06-29  
+**Active branch:** `main` (feature #5 merged — next: session lifecycle lobby→active)
 
 ---
 
@@ -64,11 +64,11 @@ Goal: working Go server with all REST endpoints, database, and auth. No frontend
 - [x] `GET /api/v1/questions/import/template`
 
 #### 1.4 Session lifecycle (US-S01–US-S04)
-- [ ] `POST /api/v1/sessions`
-- [ ] `GET /api/v1/sessions`
-- [ ] `GET /api/v1/sessions/:id`
-- [ ] `PATCH /api/v1/sessions/:id`
-- [ ] `DELETE /api/v1/sessions/:id`
+- [x] `POST /api/v1/sessions`
+- [x] `GET /api/v1/sessions`
+- [x] `GET /api/v1/sessions/:id`
+- [x] `PATCH /api/v1/sessions/:id`
+- [x] `DELETE /api/v1/sessions/:id`
 - [ ] `POST /api/v1/sessions/:id/open-lobby`
 - [ ] `GET /api/v1/sessions/:id/qr`
 - [ ] `POST /api/v1/sessions/:id/launch` (question draw + projection token)
@@ -159,7 +159,7 @@ Each item maps to one `/speckit.specify` invocation.
 | 2 | Categories CRUD | US-Q04 | 1.3 | Done — all 4 endpoints smoke tested, merged to develop |
 | 3 | Questions CRUD | US-Q01, US-Q02, US-Q05 | 1.3 | Done — merged to develop via PR #2 |
 | 4 | Questions CSV import | US-Q03 | 1.3 | Done — merged to develop via PR #3 |
-| 5 | Session create + configure | US-S01, US-S02 | 1.4 | Not started |
+| 5 | Session create + configure | US-S01, US-S02 | 1.4 | Done — 15/15 smoke tests passed, merged to main via PR #4 |
 | 6 | Session lifecycle (lobby → active) | US-S03 | 1.4 | Not started |
 | 7 | Presenter controls | US-P02, US-P03, US-P04, US-P05, US-P06 | 1.5 | Not started |
 | 8 | Player join + answer | US-PL01, US-PL03 | 1.6 | Not started |
@@ -191,6 +191,6 @@ Each item maps to one `/speckit.specify` invocation.
 ## Next session checklist
 
 Before opening Claude Code:
-1. Run `/speckit.specify` per feature #5 — Session create + configure (US-S01, US-S02)
-2. Seguire il workflow: specify → plan → tasks → implement
-3. After implementation, smoke test then open PR → merge to `develop`
+1. Run `/speckit.specify` for feature #6 — Session lifecycle (lobby → active) (US-S03)
+2. Follow the workflow: specify → plan → tasks → implement
+3. After implementation, smoke test then open PR → merge to main

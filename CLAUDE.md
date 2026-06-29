@@ -122,8 +122,11 @@ Spec files live in `specs/`. Never implement a feature without a spec file prese
 - `internal/question/` package — `models.go` (Question, QuestionFilter, QuestionListResult, QuestionUpdate, sentinel errors), `repository.go` (QuestionRepo interface + pgx impl: List with dynamic WHERE/pagination, Create, FindByID, IsInActiveSession, Update with dynamic SET, Delete), `service.go` (Service interface + active-session guard on Update/Delete), `handler.go` (GET/POST/PATCH/DELETE handlers with full validation) (003-questions-crud)
 - Go 1.25 + gofiber/fiber v2, jackc/pgx v5, encoding/csv (stdlib), google/uuid v1 (004-questions-csv-import)
 - PostgreSQL — `questions` and `categories` tables (migration 001, no new migration) (004-questions-csv-import)
+- Go 1.25 + gofiber/fiber v2, jackc/pgx v5, google/uuid v1, math/rand (stdlib) (005-session-crud)
+- PostgreSQL — `sessions` and `session_categories` tables (migration 001, no new migration) (005-session-crud)
 
 ## Recent Changes
 - 001-admin-auth: Added Go 1.25 + gofiber/fiber v2, golang-jwt/jwt v5, jackc/pgx v5, google/uuid v1, golang.org/x/crypto (bcrypt)
 - 002-categories-crud: Implemented `internal/category/` package; registered 4 routes on existing protected group; no new migration required
 - 003-questions-crud: Implemented `internal/question/` package; registered 4 routes (GET/POST/PATCH/DELETE /questions) on existing protected group; no new migration required; uses dynamic WHERE for filters, pointer-field PATCH, EXISTS guard for active-session check
+- 005-session-crud: Implemented `internal/session/` package; registered 5 routes (POST/GET/GET/:id/PATCH/:id/DELETE/:id /sessions) on existing protected group; no new migration required; PIN generation with 10-attempt retry loop on 23505 constraint, dynamic SET for PATCH, transactional category replacement, soft-delete with status guard

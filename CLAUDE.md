@@ -124,9 +124,12 @@ Spec files live in `specs/`. Never implement a feature without a spec file prese
 - PostgreSQL — `questions` and `categories` tables (migration 001, no new migration) (004-questions-csv-import)
 - Go 1.25 + gofiber/fiber v2, jackc/pgx v5, google/uuid v1, math/rand (stdlib) (005-session-crud)
 - PostgreSQL — `sessions` and `session_categories` tables (migration 001, no new migration) (005-session-crud)
+- Go 1.25 + gofiber/fiber v2, golang-jwt/jwt v5, jackc/pgx v5, google/uuid v1, `github.com/skip2/go-qrcode` (new) (006-session-lifecycle)
+- PostgreSQL — `sessions`, `session_categories`, `session_questions` (migration 001, no new migration) (006-session-lifecycle)
 
 ## Recent Changes
 - 001-admin-auth: Added Go 1.25 + gofiber/fiber v2, golang-jwt/jwt v5, jackc/pgx v5, google/uuid v1, golang.org/x/crypto (bcrypt)
 - 002-categories-crud: Implemented `internal/category/` package; registered 4 routes on existing protected group; no new migration required
 - 003-questions-crud: Implemented `internal/question/` package; registered 4 routes (GET/POST/PATCH/DELETE /questions) on existing protected group; no new migration required; uses dynamic WHERE for filters, pointer-field PATCH, EXISTS guard for active-session check
 - 005-session-crud: Implemented `internal/session/` package; registered 5 routes (POST/GET/GET/:id/PATCH/:id/DELETE/:id /sessions) on existing protected group; no new migration required; PIN generation with 10-attempt retry loop on 23505 constraint, dynamic SET for PATCH, transactional category replacement, soft-delete with status guard
+- 006-session-lifecycle: Extended `internal/session/` with 3 new endpoints (POST /open-lobby, GET /qr, POST /launch); QR PNG via skip2/go-qrcode; transactional question draw with FOR UPDATE lock; IssueProjectionToken added to internal/auth/token.go; SessionEventBroadcaster no-op interface; PLAYER_APP_BASE_URL env var placeholder; public routes must be registered before v1.Group("", RequireAdmin) in Fiber

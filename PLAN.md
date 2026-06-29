@@ -7,9 +7,9 @@ Update it at the end of every Claude Code session.
 
 ## Current status
 
-**Phase:** Backend implementation in progress — auth + categories + questions CRUD + CSV import + session CRUD complete  
-**Last updated:** 2026-06-29  
-**Active branch:** `develop` (integration branch — feature #5 merged)
+**Phase:** Backend implementation in progress — auth + categories + questions CRUD + CSV import + session CRUD + session lifecycle complete  
+**Last updated:** 2026-06-30  
+**Active branch:** `develop` (integration branch — feature #6 merged)
 
 ---
 
@@ -69,9 +69,9 @@ Goal: working Go server with all REST endpoints, database, and auth. No frontend
 - [x] `GET /api/v1/sessions/:id`
 - [x] `PATCH /api/v1/sessions/:id`
 - [x] `DELETE /api/v1/sessions/:id`
-- [ ] `POST /api/v1/sessions/:id/open-lobby`
-- [ ] `GET /api/v1/sessions/:id/qr`
-- [ ] `POST /api/v1/sessions/:id/launch` (question draw + projection token)
+- [x] `POST /api/v1/sessions/:id/open-lobby`
+- [x] `GET /api/v1/sessions/:id/qr`
+- [x] `POST /api/v1/sessions/:id/launch` (question draw + projection token)
 
 #### 1.5 Live session — presenter controls (US-P02–US-P06)
 - [ ] `POST /api/v1/sessions/:id/next-question`
@@ -160,7 +160,7 @@ Each item maps to one `/speckit.specify` invocation.
 | 3 | Questions CRUD | US-Q01, US-Q02, US-Q05 | 1.3 | Done — merged to develop via PR #2 |
 | 4 | Questions CSV import | US-Q03 | 1.3 | Done — merged to develop via PR #3 |
 | 5 | Session create + configure | US-S01, US-S02 | 1.4 | Done — 15/15 smoke tests passed, merged to develop via PR #4 |
-| 6 | Session lifecycle (lobby → active) | US-S03 | 1.4 | Not started |
+| 6 | Session lifecycle (lobby → active) | US-S03 | 1.4 | Done — all smoke tests passed, merged to develop via PR #5 |
 | 7 | Presenter controls | US-P02, US-P03, US-P04, US-P05, US-P06 | 1.5 | Not started |
 | 8 | Player join + answer | US-PL01, US-PL03 | 1.6 | Not started |
 | 9 | Stats + leaderboard | US-ST01, US-ST02, US-S04 | 1.7 | Not started |
@@ -185,12 +185,15 @@ Each item maps to one `/speckit.specify` invocation.
 | 2026-04-23 | `internal/category/` package — 4-file layout mirroring auth | Consistent with established pattern; no ORM, raw pgx queries — merged to develop via PR #1 |
 | 2026-04-23 | `question_count` computed via LEFT JOIN at query time | Avoids denormalized counter maintenance; acceptable at MVP scale |
 | 2026-04-23 | `ErrCategoryHasQuestions` as struct (not var) | Carries blocking count for the error message without extra DB round-trip |
+| 2026-06-30 | QR public route registered before `protected` group | Fiber applies group middleware to all routes registered after `v1.Group("", middleware)` — public routes must precede that call |
+| 2026-06-30 | `SessionEventBroadcaster` no-op injected at launch | Decouples session lifecycle from WebSocket hub (feature #10); real impl swapped in without touching service logic |
+| 2026-06-30 | `PLAYER_APP_BASE_URL` env var placeholder | Player/projection frontend URLs hardcoded as `http://localhost:5173`; env var makes them overridable at deploy time |
 
 ---
 
 ## Next session checklist
 
 Before opening Claude Code:
-1. Run `/speckit.specify` for feature #6 — Session lifecycle (lobby → active) (US-S03)
+1. Run `/speckit.specify` for feature #7 — Presenter controls (US-P02, US-P03, US-P04, US-P05, US-P06)
 2. Follow the workflow: specify → plan → tasks → implement
 3. After implementation, smoke test then open PR → merge to develop

@@ -3,7 +3,10 @@ package session
 import (
 	"context"
 	"fmt"
+	"strings"
 
+	"github.com/PieTempesti98/quizshow/internal/auth"
+	qrcode "github.com/skip2/go-qrcode"
 	"github.com/google/uuid"
 )
 
@@ -14,15 +17,26 @@ type Service interface {
 	FindByID(ctx context.Context, id uuid.UUID) (SessionDetail, error)
 	Update(ctx context.Context, id uuid.UUID, u SessionUpdate) (Session, int, string, error)
 	Delete(ctx context.Context, id uuid.UUID) error
+	OpenLobby(ctx context.Context, id uuid.UUID) (OpenLobbyResult, error)
+	GetQR(ctx context.Context, id uuid.UUID) ([]byte, error)
+	Launch(ctx context.Context, id uuid.UUID) (LaunchResult, error)
 }
 
 type service struct {
-	repo SessionRepo
+	repo        SessionRepo
+	authCfg     auth.Config
+	playerURL   string // PLACEHOLDER: update PLAYER_APP_BASE_URL env var when player frontend is deployed
+	broadcaster SessionEventBroadcaster
 }
 
 // NewService constructs a session Service.
-func NewService(repo SessionRepo) Service {
-	return &service{repo: repo}
+func NewService(repo SessionRepo, authCfg auth.Config, playerURL string, broadcaster SessionEventBroadcaster) Service {
+	return &service{repo: repo, authCfg: authCfg, playerURL: playerURL, broadcaster: broadcaster}
+}
+
+// buildURL joins a base URL (trailing slash stripped) with a path.
+func buildURL(base, path string) string {
+	return strings.TrimRight(base, "/") + path
 }
 
 var validTimePerQuestion = map[int16]bool{10: true, 20: true, 30: true, 60: true}
@@ -138,4 +152,51 @@ func (s *service) Update(ctx context.Context, id uuid.UUID, u SessionUpdate) (Se
 
 func (s *service) Delete(ctx context.Context, id uuid.UUID) error {
 	return s.repo.Delete(ctx, id)
+}
+
+func (s *service) OpenLobby(ctx context.Context, id uuid.UUID) (OpenLobbyResult, error) {
+	sess, err := s.repo.OpenLobby(ctx, id)
+	if err != nil {
+		return OpenLobbyResult{}, err
+	}
+	return OpenLobbyResult{
+		SessionID: sess.ID.String(),
+		PIN:       sess.PIN,
+		QRCodeURL: "/api/v1/sessions/" + sess.ID.String() + "/qr",
+		Status:    sess.Status,
+	}, nil
+}
+
+func (s *service) GetQR(ctx context.Context, id uuid.UUID) ([]byte, error) {
+	detail, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	url := buildURL(s.playerURL, "/join?pin="+detail.PIN)
+	png, err := qrcode.Encode(url, qrcode.Medium, 256)
+	if err != nil {
+		return nil, fmt.Errorf("session service: generate qr: %w", err)
+	}
+	return png, nil
+}
+
+func (s *service) Launch(ctx context.Context, id uuid.UUID) (LaunchResult, error) {
+	sess, drawn, err := s.repo.Launch(ctx, id)
+	if err != nil {
+		return LaunchResult{}, err
+	}
+	token, err := auth.IssueProjectionToken(sess.ID, s.authCfg)
+	if err != nil {
+		return LaunchResult{}, fmt.Errorf("session service: issue projection token: %w", err)
+	}
+	projURL := buildURL(s.playerURL, "/projection?session="+sess.ID.String()+"&token="+token)
+	s.broadcaster.BroadcastSessionStarted(sess.ID.String(), drawn)
+	return LaunchResult{
+		SessionID:       sess.ID.String(),
+		Status:          sess.Status,
+		QuestionCount:   drawn,
+		ProjectionToken: token,
+		ProjectionURL:   projURL,
+		StartedAt:       *sess.StartedAt,
+	}, nil
 }

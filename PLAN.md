@@ -9,7 +9,7 @@ Update it at the end of every Claude Code session.
 
 **Phase:** Backend implementation in progress — auth + categories + questions CRUD + CSV import + session CRUD complete  
 **Last updated:** 2026-06-29  
-**Active branch:** `main` (feature #5 merged — next: session lifecycle lobby→active)
+**Active branch:** `main` (integration branch — feature #5 merged)
 
 ---
 
@@ -156,9 +156,9 @@ Each item maps to one `/speckit.specify` invocation.
 | # | Feature | User stories | Phase | Status |
 |---|---|---|---|---|
 | 1 | Auth admin | US-A01, US-A02 | 1.2 | Done — smoke tested against live DB |
-| 2 | Categories CRUD | US-Q04 | 1.3 | Done — all 4 endpoints smoke tested, merged to develop |
-| 3 | Questions CRUD | US-Q01, US-Q02, US-Q05 | 1.3 | Done — merged to develop via PR #2 |
-| 4 | Questions CSV import | US-Q03 | 1.3 | Done — merged to develop via PR #3 |
+| 2 | Categories CRUD | US-Q04 | 1.3 | Done — all 4 endpoints smoke tested, merged to main |
+| 3 | Questions CRUD | US-Q01, US-Q02, US-Q05 | 1.3 | Done — merged to main via PR #2 |
+| 4 | Questions CSV import | US-Q03 | 1.3 | Done — merged to main via PR #3 |
 | 5 | Session create + configure | US-S01, US-S02 | 1.4 | Done — 15/15 smoke tests passed, merged to main via PR #4 |
 | 6 | Session lifecycle (lobby → active) | US-S03 | 1.4 | Not started |
 | 7 | Presenter controls | US-P02, US-P03, US-P04, US-P05, US-P06 | 1.5 | Not started |
@@ -182,7 +182,7 @@ Each item maps to one `/speckit.specify` invocation.
 | 2026-04-20 | CSV import synchronous, max 500 rows | Sufficient for MVP scale; async job queue not justified |
 | 2026-04-20 | Stats on dedicated endpoints, not nested in session detail | Separation of concerns; avoids aggregation on every session fetch |
 | 2026-04-20 | `sessions.created_by` nullable FK to admins | MVP has one admin so visibility is global; field ready for R2 multi-admin filtering without migration |
-| 2026-04-23 | `internal/category/` package — 4-file layout mirroring auth | Consistent with established pattern; no ORM, raw pgx queries — merged to develop via PR #1 |
+| 2026-04-23 | `internal/category/` package — 4-file layout mirroring auth | Consistent with established pattern; no ORM, raw pgx queries — merged to main via PR #1 |
 | 2026-04-23 | `question_count` computed via LEFT JOIN at query time | Avoids denormalized counter maintenance; acceptable at MVP scale |
 | 2026-04-23 | `ErrCategoryHasQuestions` as struct (not var) | Carries blocking count for the error message without extra DB round-trip |
 

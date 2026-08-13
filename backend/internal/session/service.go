@@ -28,6 +28,9 @@ type Service interface {
 	End(ctx context.Context, id uuid.UUID, reason string) (EndSessionResult, error)
 	Join(ctx context.Context, sessionID uuid.UUID, pin string, nickname string) (PlayerJoinResult, error)
 	SubmitAnswer(ctx context.Context, sessionID uuid.UUID, playerID uuid.UUID, sessionQuestionID uuid.UUID, chosenIndex int16) (AnswerSubmitResult, error)
+	GetLeaderboard(ctx context.Context, sessionID uuid.UUID) (SessionLeaderboardResult, error)
+	GetLeaderboardCSV(ctx context.Context, sessionID uuid.UUID) (filename string, data []byte, err error)
+	GetStats(ctx context.Context, sessionID uuid.UUID) (SessionStatsResult, error)
 }
 
 type service struct {
@@ -411,6 +414,47 @@ func (s *service) SubmitAnswer(ctx context.Context, sessionID uuid.UUID, playerI
 		ChosenIndex: retChosen,
 		AnsweredAt:  ans.AnsweredAt,
 		IsDuplicate: isDuplicate,
+	}, nil
+}
+
+func (s *service) GetLeaderboard(ctx context.Context, sessionID uuid.UUID) (SessionLeaderboardResult, error) {
+	sess, entries, err := s.repo.GetLeaderboard(ctx, sessionID)
+	if err != nil {
+		return SessionLeaderboardResult{}, err
+	}
+
+	return SessionLeaderboardResult{
+		SessionID:   sess.ID.String(),
+		SessionName: sess.Name,
+		EndedAt:     sess.EndedAt,
+		Leaderboard: entries,
+	}, nil
+}
+
+func (s *service) GetLeaderboardCSV(ctx context.Context, sessionID uuid.UUID) (string, []byte, error) {
+	sess, entries, err := s.repo.GetLeaderboard(ctx, sessionID)
+	if err != nil {
+		return "", nil, err
+	}
+
+	data, err := GenerateLeaderboardCSV(entries)
+	if err != nil {
+		return "", nil, fmt.Errorf("service: generate leaderboard csv: %w", err)
+	}
+
+	filename := FormatLeaderboardCSVFilename(sess.Name, sess.EndedAt, sess.CreatedAt)
+	return filename, data, nil
+}
+
+func (s *service) GetStats(ctx context.Context, sessionID uuid.UUID) (SessionStatsResult, error) {
+	sess, questions, err := s.repo.GetStats(ctx, sessionID)
+	if err != nil {
+		return SessionStatsResult{}, err
+	}
+
+	return SessionStatsResult{
+		SessionID: sess.ID.String(),
+		Questions: questions,
 	}, nil
 }
 

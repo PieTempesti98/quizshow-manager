@@ -84,8 +84,8 @@ Goal: working Go server with all REST endpoints, database, and auth. No frontend
 - [x] `POST /api/v1/sessions/:session_id/answers`
 
 #### 1.7 Stats endpoints (US-ST01, US-ST02)
-- [ ] `GET /api/v1/sessions/:id/leaderboard` (+ `?format=csv`)
-- [ ] `GET /api/v1/sessions/:id/stats`
+- [x] `GET /api/v1/sessions/:id/leaderboard` (+ `?format=csv`)
+- [x] `GET /api/v1/sessions/:id/stats`
 
 #### 1.8 WebSocket hub
 - [ ] Generate `docs/05-websocket-events.md` (do this in Claude Web first)
@@ -162,7 +162,7 @@ Each item maps to one `/speckit.specify` invocation.
 | 6 | Session lifecycle (lobby → active) | US-S03 | 1.4 | Done — all smoke tests passed, merged to develop via PR #5 |
 | 7 | Presenter controls | US-P02, US-P03, US-P04, US-P05, US-P06 | 1.5 | Done — all 5 endpoints + scoring engine smoke tested on live DB |
 | 8 | Player join + answer | US-PL01, US-PL03 | 1.6 | Done — unit + HTTP smoke tests passed, merged to develop via PR #7 |
-| 9 | Stats + leaderboard | US-ST01, US-ST02, US-S04 | 1.7 | Not started |
+| 9 | Stats + leaderboard | US-ST01, US-ST02, US-S04 | 1.7 | Done — unit + HTTP smoke tests passed |
 | 10 | WebSocket hub | US-P01, US-PL02, US-PR01–04 | 1.8 | Not started |
 
 ---
@@ -193,13 +193,15 @@ Each item maps to one `/speckit.specify` invocation.
 | 2026-08-14 | Ephemeral Player JWT with 4h TTL | Role claim "player" and session_id context injection for player routes |
 | 2026-08-14 | Idempotent Answer Submission | Re-submitting existing answer returns HTTP 200 without duplicate rows |
 | 2026-08-14 | Server-side question timer enforcement | Elapsed calculation against session time_per_question_s; 409 QUESTION_CLOSED on timeout |
+| 2026-08-14 | RFC 4180 Leaderboard CSV & Slugification | Pure Go stdlib CSV serialization with attachment filename slugification |
+| 2026-08-14 | Deterministic Leaderboard Ranking | Strict ordering `total_score DESC, joined_at ASC, id ASC` with status guard `completed`/`cancelled` |
 
 ---
 
 ## Next session checklist
 
 Before opening next session:
-1. Run `/speckit.specify` for feature #9 — Stats + leaderboard (US-ST01, US-ST02, US-S04)
+1. Run `/speckit.specify` for feature #10 — WebSocket hub (US-P01, US-PL02, US-PR01–04)
 2. Follow the workflow: specify → plan → tasks → implement
 3. After implementation, smoke test then open PR → merge to develop
 

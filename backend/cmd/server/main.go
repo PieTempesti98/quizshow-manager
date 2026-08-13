@@ -111,6 +111,8 @@ func main() {
 	protected.Post("/sessions/:id/resume-timer", sessionHandler.ResumeTimer)
 	protected.Post("/sessions/:id/reveal", sessionHandler.Reveal)
 	protected.Post("/sessions/:id/end", sessionHandler.End)
+	protected.Get("/sessions/:id/leaderboard", sessionHandler.GetLeaderboard)
+	protected.Get("/sessions/:id/stats", sessionHandler.GetStats)
 
 	port := os.Getenv("PORT")
 	if port == "" {

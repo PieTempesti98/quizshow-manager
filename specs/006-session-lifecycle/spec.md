@@ -68,7 +68,7 @@ The admin has waited for enough players to join in the lobby and is ready to sta
 ### Edge Cases
 
 - What happens if `POST /open-lobby` is called concurrently twice for the same draft session? The first call wins; the second gets 409 because the status is no longer draft.
-- What if the session's configured categories were soft-deleted after session creation? Only questions with `deleted_at IS NULL` are eligible for draw — the pool shrinks accordingly.
+- What if the session's configured categories were soft-deleted after session creation? A category cannot be soft-deleted while it has active questions (guarded by `ErrCategoryHasQuestions` in the category service), so questions with `deleted_at IS NULL` are always eligible for draw — the pool shrinks accordingly if questions were soft-deleted.
 - What if `PLAYER_APP_BASE_URL` contains a trailing slash? URL construction must normalize the slash to avoid double-slash in the resulting URL.
 - Can the QR endpoint be called for a session in draft status (before open-lobby)? Yes — the PIN is set at creation and the QR has no status constraint (see Assumptions for rationale).
 
@@ -93,7 +93,7 @@ The admin has waited for enough players to join in the lobby and is ready to sta
 - **FR-015**: JWT signing for `projection_token` MUST reuse/extend the existing `internal/auth` token utility — signing logic must not be duplicated.
 - **FR-016**: A `SessionEventBroadcaster` interface with method `BroadcastSessionStarted(sessionID string, totalQuestions int)` MUST be defined and a no-op implementation injected into the session service for this feature.
 - **FR-017**: The draw and `session_questions` insert on launch MUST be wrapped in a single database transaction.
-- **FR-018**: All three new endpoints MUST be registered in the existing Fiber router in `backend/internal/session/handler.go`.
+- **FR-018**: All three new endpoints MUST have handler methods implemented in `backend/internal/session/handler.go` and be registered on the Fiber router in `backend/cmd/server/main.go` (with `/qr` on the public group and `/open-lobby` & `/launch` on the protected group).
 
 ### Key Entities
 
@@ -109,7 +109,7 @@ The admin has waited for enough players to join in the lobby and is ready to sta
 - **SC-002**: A session launch (including question draw and DB write) completes in under 1 second for pools up to 500 available questions.
 - **SC-003**: The QR code PNG is served in under 300ms and is correctly decodable by standard QR scanner apps.
 - **SC-004**: No partial question draws are ever committed: if the launch fails after draw but before full DB write, the session remains in lobby with zero session_questions rows.
-- **SC-005**: All three new endpoints return responses conforming to the existing `{ "data": ... }` / `{ "error": ... }` envelope for both success and error paths.
+- **SC-005**: All JSON responses conform to the standard `{ "data": ... }` / `{ "error": ... }` envelope, while `GET /sessions/:id/qr` returns raw binary PNG (`image/png`) data on HTTP 200 and the standard error envelope on failure.
 
 ## Assumptions
 

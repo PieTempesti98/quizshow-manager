@@ -60,6 +60,8 @@ type SessionRepo interface {
 	EndSession(ctx context.Context, id uuid.UUID, reason string) (Session, error)
 	JoinPlayer(ctx context.Context, sessionID uuid.UUID, pin string, nickname string, avatarColor string) (Player, Session, int, error)
 	SubmitAnswer(ctx context.Context, sessionID uuid.UUID, playerID uuid.UUID, sessionQuestionID uuid.UUID, chosenIndex int16, now time.Time) (Answer, bool, int, int, error)
+	GetLeaderboard(ctx context.Context, sessionID uuid.UUID) (Session, []SessionLeaderboardEntry, error)
+	GetStats(ctx context.Context, sessionID uuid.UUID) (Session, []QuestionStatsItem, error)
 }
 
 
@@ -1101,5 +1103,192 @@ func (r *SessionRepository) SubmitAnswer(ctx context.Context, sessionID uuid.UUI
 	}
 
 	return newAns, false, answeredCount, totalPlayers, nil
+}
+
+// GetLeaderboard fetches all players ordered by total_score DESC, joined_at ASC, id ASC for a completed/cancelled session.
+func (r *SessionRepository) GetLeaderboard(ctx context.Context, sessionID uuid.UUID) (Session, []SessionLeaderboardEntry, error) {
+	// 1. Fetch and validate session status
+	const selectSession = `
+		SELECT id, name, pin, status::text, question_count, time_per_question_s, points_per_answer,
+		       speed_bonus_enabled, started_at, ended_at, created_by, created_at, updated_at, deleted_at
+		FROM sessions
+		WHERE id = $1 AND deleted_at IS NULL`
+
+	var sess Session
+	err := r.pool.QueryRow(ctx, selectSession, sessionID).Scan(
+		&sess.ID, &sess.Name, &sess.PIN, &sess.Status,
+		&sess.QuestionCount, &sess.TimePerQuestionS, &sess.PointsPerAnswer,
+		&sess.SpeedBonusEnabled, &sess.StartedAt, &sess.EndedAt,
+		&sess.CreatedBy, &sess.CreatedAt, &sess.UpdatedAt, &sess.DeletedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Session{}, nil, ErrSessionNotFound
+	}
+	if err != nil {
+		return Session{}, nil, fmt.Errorf("session repo: get leaderboard fetch session: %w", err)
+	}
+
+	if sess.Status != "completed" && sess.Status != "cancelled" {
+		return Session{}, nil, ErrSessionNotCompleted
+	}
+
+	// 2. Fetch leaderboard ranking
+	const selectLeaderboard = `
+		SELECT
+			ROW_NUMBER() OVER (ORDER BY p.total_score DESC, p.joined_at ASC, p.id ASC)::int AS rank,
+			p.id AS player_id,
+			p.nickname,
+			p.total_score,
+			p.avatar_color,
+			COALESCE(COUNT(a.id) FILTER (WHERE a.is_correct), 0)::int AS correct_answers,
+			s.question_count::int AS total_questions
+		FROM players p
+		JOIN sessions s ON s.id = p.session_id
+		LEFT JOIN session_questions sq ON sq.session_id = s.id
+		LEFT JOIN answers a ON a.session_question_id = sq.id AND a.player_id = p.id
+		WHERE p.session_id = $1
+		GROUP BY p.id, p.nickname, p.total_score, p.avatar_color, p.joined_at, s.question_count
+		ORDER BY rank ASC`
+
+	rows, err := r.pool.Query(ctx, selectLeaderboard, sessionID)
+	if err != nil {
+		return Session{}, nil, fmt.Errorf("session repo: get leaderboard query: %w", err)
+	}
+	defer rows.Close()
+
+	entries := make([]SessionLeaderboardEntry, 0)
+	for rows.Next() {
+		var entry SessionLeaderboardEntry
+		if err := rows.Scan(
+			&entry.Rank,
+			&entry.PlayerID,
+			&entry.Nickname,
+			&entry.TotalScore,
+			&entry.AvatarColor,
+			&entry.CorrectAnswers,
+			&entry.TotalQuestions,
+		); err != nil {
+			return Session{}, nil, fmt.Errorf("session repo: get leaderboard scan: %w", err)
+		}
+		entries = append(entries, entry)
+	}
+	if err := rows.Err(); err != nil {
+		return Session{}, nil, fmt.Errorf("session repo: get leaderboard rows: %w", err)
+	}
+
+	return sess, entries, nil
+}
+
+// GetStats fetches the per-question aggregated breakdown for a completed/cancelled session.
+func (r *SessionRepository) GetStats(ctx context.Context, sessionID uuid.UUID) (Session, []QuestionStatsItem, error) {
+	// 1. Fetch and validate session status
+	const selectSession = `
+		SELECT id, name, pin, status::text, question_count, time_per_question_s, points_per_answer,
+		       speed_bonus_enabled, started_at, ended_at, created_by, created_at, updated_at, deleted_at
+		FROM sessions
+		WHERE id = $1 AND deleted_at IS NULL`
+
+	var sess Session
+	err := r.pool.QueryRow(ctx, selectSession, sessionID).Scan(
+		&sess.ID, &sess.Name, &sess.PIN, &sess.Status,
+		&sess.QuestionCount, &sess.TimePerQuestionS, &sess.PointsPerAnswer,
+		&sess.SpeedBonusEnabled, &sess.StartedAt, &sess.EndedAt,
+		&sess.CreatedBy, &sess.CreatedAt, &sess.UpdatedAt, &sess.DeletedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Session{}, nil, ErrSessionNotFound
+	}
+	if err != nil {
+		return Session{}, nil, fmt.Errorf("session repo: get stats fetch session: %w", err)
+	}
+
+	if sess.Status != "completed" && sess.Status != "cancelled" {
+		return Session{}, nil, ErrSessionNotCompleted
+	}
+
+	// 2. Fetch total players count
+	var totalPlayers int
+	err = r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM players WHERE session_id = $1`, sessionID).Scan(&totalPlayers)
+	if err != nil {
+		return Session{}, nil, fmt.Errorf("session repo: get stats count players: %w", err)
+	}
+
+	// 3. Fetch aggregated question performance
+	const selectQuestionStats = `
+		SELECT
+			sq.position::int,
+			q.text AS question_text,
+			q.difficulty::text,
+			q.correct_index::int,
+			COALESCE(COUNT(a.id) FILTER (WHERE a.is_correct), 0)::int AS correct_count,
+			COALESCE(COUNT(a.id) FILTER (WHERE NOT a.is_correct AND a.chosen_index IS NOT NULL), 0)::int AS wrong_count,
+			COALESCE(COUNT(a.id) FILTER (WHERE a.chosen_index = 0), 0)::int AS count_0,
+			COALESCE(COUNT(a.id) FILTER (WHERE a.chosen_index = 1), 0)::int AS count_1,
+			COALESCE(COUNT(a.id) FILTER (WHERE a.chosen_index = 2), 0)::int AS count_2,
+			COALESCE(COUNT(a.id) FILTER (WHERE a.chosen_index = 3), 0)::int AS count_3,
+			COALESCE(AVG(a.answer_time_ms) FILTER (WHERE a.answer_time_ms IS NOT NULL), 0)::int AS avg_answer_time_ms
+		FROM session_questions sq
+		JOIN questions q ON q.id = sq.question_id
+		LEFT JOIN answers a ON a.session_question_id = sq.id
+		WHERE sq.session_id = $1
+		GROUP BY sq.id, sq.position, q.text, q.correct_index, q.difficulty
+		ORDER BY sq.position ASC`
+
+	rows, err := r.pool.Query(ctx, selectQuestionStats, sessionID)
+	if err != nil {
+		return Session{}, nil, fmt.Errorf("session repo: get stats query: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]QuestionStatsItem, 0)
+	for rows.Next() {
+		var item QuestionStatsItem
+		var count0, count1, count2, count3 int
+		if err := rows.Scan(
+			&item.Position,
+			&item.Text,
+			&item.Difficulty,
+			&item.CorrectIndex,
+			&item.CorrectCount,
+			&item.WrongCount,
+			&count0,
+			&count1,
+			&count2,
+			&count3,
+			&item.AvgAnswerTimeMs,
+		); err != nil {
+			return Session{}, nil, fmt.Errorf("session repo: get stats scan: %w", err)
+		}
+
+		answeredCount := item.CorrectCount + item.WrongCount
+		noAnswerCount := totalPlayers - answeredCount
+		if noAnswerCount < 0 {
+			noAnswerCount = 0
+		}
+		item.NoAnswerCount = noAnswerCount
+
+		totalAnswered := count0 + count1 + count2 + count3
+		counts := [4]int{count0, count1, count2, count3}
+		distribution := make([]AnswerDistributionItem, 4)
+		for i := 0; i < 4; i++ {
+			pct := 0
+			if totalAnswered > 0 {
+				pct = int(math.Round(float64(counts[i]) / float64(totalAnswered) * 100))
+			}
+			distribution[i] = AnswerDistributionItem{
+				Index:   i,
+				Count:   counts[i],
+				Percent: pct,
+			}
+		}
+		item.AnswerDistribution = distribution
+
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return Session{}, nil, fmt.Errorf("session repo: get stats rows: %w", err)
+	}
+
+	return sess, items, nil
 }
 

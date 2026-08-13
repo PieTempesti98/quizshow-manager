@@ -2,6 +2,7 @@ package session
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/PieTempesti98/quizshow/internal/api"
@@ -813,6 +814,105 @@ func (h *Handler) SubmitAnswer(c *fiber.Ctx) error {
 			"answer_id":    result.AnswerID,
 			"chosen_index": result.ChosenIndex,
 			"answered_at":  result.AnsweredAt.UTC().Format("2006-01-02T15:04:05Z"),
+		},
+	})
+}
+
+// GetLeaderboard handles GET /api/v1/sessions/:id/leaderboard.
+func (h *Handler) GetLeaderboard(c *fiber.Ctx) error {
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(api.ErrorResponse{
+			Error: api.ErrorDetail{Code: "VALIDATION_ERROR", Message: "id: must be a valid UUID"},
+		})
+	}
+
+	if c.Query("format") == "csv" {
+		filename, csvData, err := h.svc.GetLeaderboardCSV(c.Context(), id)
+		if err != nil {
+			if errors.Is(err, ErrSessionNotFound) {
+				return c.Status(fiber.StatusNotFound).JSON(api.ErrorResponse{
+					Error: api.ErrorDetail{Code: "NOT_FOUND", Message: "session not found"},
+				})
+			}
+			if errors.Is(err, ErrSessionNotCompleted) {
+				return c.Status(fiber.StatusConflict).JSON(api.ErrorResponse{
+					Error: api.ErrorDetail{Code: "SESSION_NOT_COMPLETED", Message: "session must be completed or cancelled to access leaderboard"},
+				})
+			}
+			return c.Status(fiber.StatusInternalServerError).JSON(api.ErrorResponse{
+				Error: api.ErrorDetail{Code: "INTERNAL_ERROR", Message: "an unexpected error occurred"},
+			})
+		}
+
+		c.Set("Content-Type", "text/csv; charset=utf-8")
+		c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+		return c.Status(fiber.StatusOK).Send(csvData)
+	}
+
+	result, err := h.svc.GetLeaderboard(c.Context(), id)
+	if err != nil {
+		if errors.Is(err, ErrSessionNotFound) {
+			return c.Status(fiber.StatusNotFound).JSON(api.ErrorResponse{
+				Error: api.ErrorDetail{Code: "NOT_FOUND", Message: "session not found"},
+			})
+		}
+		if errors.Is(err, ErrSessionNotCompleted) {
+			return c.Status(fiber.StatusConflict).JSON(api.ErrorResponse{
+				Error: api.ErrorDetail{Code: "SESSION_NOT_COMPLETED", Message: "session must be completed or cancelled to access leaderboard"},
+			})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(api.ErrorResponse{
+			Error: api.ErrorDetail{Code: "INTERNAL_ERROR", Message: "an unexpected error occurred"},
+		})
+	}
+
+	var endedAtStr *string
+	if result.EndedAt != nil {
+		s := result.EndedAt.UTC().Format("2006-01-02T15:04:05Z")
+		endedAtStr = &s
+	}
+
+	return c.Status(fiber.StatusOK).JSON(api.DataResponse{
+		Data: map[string]any{
+			"session_id":   result.SessionID,
+			"session_name": result.SessionName,
+			"ended_at":     endedAtStr,
+			"leaderboard":  result.Leaderboard,
+		},
+	})
+}
+
+// GetStats handles GET /api/v1/sessions/:id/stats.
+func (h *Handler) GetStats(c *fiber.Ctx) error {
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(api.ErrorResponse{
+			Error: api.ErrorDetail{Code: "VALIDATION_ERROR", Message: "id: must be a valid UUID"},
+		})
+	}
+
+	result, err := h.svc.GetStats(c.Context(), id)
+	if err != nil {
+		if errors.Is(err, ErrSessionNotFound) {
+			return c.Status(fiber.StatusNotFound).JSON(api.ErrorResponse{
+				Error: api.ErrorDetail{Code: "NOT_FOUND", Message: "session not found"},
+			})
+		}
+		if errors.Is(err, ErrSessionNotCompleted) {
+			return c.Status(fiber.StatusConflict).JSON(api.ErrorResponse{
+				Error: api.ErrorDetail{Code: "SESSION_NOT_COMPLETED", Message: "session must be completed or cancelled to access stats"},
+			})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(api.ErrorResponse{
+			Error: api.ErrorDetail{Code: "INTERNAL_ERROR", Message: "an unexpected error occurred"},
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(api.DataResponse{
+		Data: map[string]any{
+			"session_id": result.SessionID,
+			"questions":  result.Questions,
 		},
 	})
 }

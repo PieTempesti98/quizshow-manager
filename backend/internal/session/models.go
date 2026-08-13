@@ -90,6 +90,7 @@ var (
 	ErrQuestionClosed          = errors.New("question is closed or timer has expired")
 	ErrQuestionNotFound        = errors.New("question not found in active session")
 	ErrForbiddenSession        = errors.New("player does not belong to this session")
+	ErrSessionNotCompleted     = errors.New("session is not completed or cancelled")
 )
 
 // Player represents an ephemeral participant in an active/lobby session.
@@ -212,6 +213,44 @@ type EndSessionResult struct {
 	SessionID string
 	Status    string
 	EndedAt   time.Time
+}
+
+// SessionLeaderboardEntry represents one player's row in the final session leaderboard.
+type SessionLeaderboardEntry struct {
+	Rank           int       `json:"rank"`
+	PlayerID       uuid.UUID `json:"player_id"`
+	Nickname       string    `json:"nickname"`
+	TotalScore     int       `json:"total_score"`
+	AvatarColor    string    `json:"avatar_color"`
+	CorrectAnswers int       `json:"correct_answers"`
+	TotalQuestions int       `json:"total_questions"`
+}
+
+// SessionLeaderboardResult represents the response payload for GET /api/v1/sessions/:id/leaderboard.
+type SessionLeaderboardResult struct {
+	SessionID   string                    `json:"session_id"`
+	SessionName string                    `json:"session_name"`
+	EndedAt     *time.Time                `json:"ended_at"`
+	Leaderboard []SessionLeaderboardEntry `json:"leaderboard"`
+}
+
+// QuestionStatsItem represents the aggregated statistics for a single question in a finished session.
+type QuestionStatsItem struct {
+	Position           int                      `json:"position"`
+	Text               string                   `json:"text"`
+	Difficulty         string                   `json:"difficulty"`
+	CorrectIndex       int                      `json:"correct_index"`
+	CorrectCount       int                      `json:"correct_count"`
+	WrongCount         int                      `json:"wrong_count"`
+	NoAnswerCount      int                      `json:"no_answer_count"`
+	AnswerDistribution []AnswerDistributionItem `json:"answer_distribution"`
+	AvgAnswerTimeMs    int                      `json:"avg_answer_time_ms"`
+}
+
+// SessionStatsResult represents the response payload for GET /api/v1/sessions/:id/stats.
+type SessionStatsResult struct {
+	SessionID string              `json:"session_id"`
+	Questions []QuestionStatsItem `json:"questions"`
 }
 
 // SessionEventBroadcaster notifies connected clients of session state changes.

@@ -161,7 +161,7 @@ Each item maps to one `/speckit.specify` invocation.
 | 5 | Session create + configure | US-S01, US-S02 | 1.4 | Done — 15/15 smoke tests passed, merged to develop via PR #4 |
 | 6 | Session lifecycle (lobby → active) | US-S03 | 1.4 | Done — all smoke tests passed, merged to develop via PR #5 |
 | 7 | Presenter controls | US-P02, US-P03, US-P04, US-P05, US-P06 | 1.5 | Done — all 5 endpoints + scoring engine smoke tested on live DB |
-| 8 | Player join + answer | US-PL01, US-PL03 | 1.6 | Done — unit + HTTP smoke tests passed, PR #7 open to develop |
+| 8 | Player join + answer | US-PL01, US-PL03 | 1.6 | Done — unit + HTTP smoke tests passed, merged to develop via PR #7 |
 | 9 | Stats + leaderboard | US-ST01, US-ST02, US-S04 | 1.7 | Not started |
 | 10 | WebSocket hub | US-P01, US-PL02, US-PR01–04 | 1.8 | Not started |
 
@@ -199,8 +199,8 @@ Each item maps to one `/speckit.specify` invocation.
 ## Next session checklist
 
 Before opening next session:
-1. Merge PR #7 for feature #8
-2. Run `/speckit.specify` for feature #9 — Stats + leaderboard (US-ST01, US-ST02, US-S04)
-3. Follow the workflow: specify → plan → tasks → implement
-4. After implementation, smoke test then open PR → merge to develop
+1. Run `/speckit.specify` for feature #9 — Stats + leaderboard (US-ST01, US-ST02, US-S04)
+2. Follow the workflow: specify → plan → tasks → implement
+3. After implementation, smoke test then open PR → merge to develop
+
 

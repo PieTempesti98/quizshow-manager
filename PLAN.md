@@ -6,7 +6,7 @@ Update it at the end of every Claude Code session.
 ---
 ## Current status
 
-**Phase:** Backend implementation in progress — auth + categories + questions CRUD + CSV import + session CRUD + session lifecycle + presenter controls complete  
+**Phase:** Backend implementation in progress — auth + categories + questions CRUD + CSV import + session CRUD + session lifecycle + presenter controls + player join & answer complete  
 **Last updated:** 2026-08-14  
 **Active branch:** `develop`  
 
@@ -80,8 +80,8 @@ Goal: working Go server with all REST endpoints, database, and auth. No frontend
 - [x] `POST /api/v1/sessions/:id/end`
 
 #### 1.6 Player endpoints (US-PL01, US-PL03)
-- [ ] `POST /api/v1/sessions/:id/join` (PIN + nickname → player JWT)
-- [ ] `POST /api/v1/sessions/:session_id/answers`
+- [x] `POST /api/v1/sessions/:id/join` (PIN + nickname → player JWT)
+- [x] `POST /api/v1/sessions/:session_id/answers`
 
 #### 1.7 Stats endpoints (US-ST01, US-ST02)
 - [ ] `GET /api/v1/sessions/:id/leaderboard` (+ `?format=csv`)
@@ -161,7 +161,7 @@ Each item maps to one `/speckit.specify` invocation.
 | 5 | Session create + configure | US-S01, US-S02 | 1.4 | Done — 15/15 smoke tests passed, merged to develop via PR #4 |
 | 6 | Session lifecycle (lobby → active) | US-S03 | 1.4 | Done — all smoke tests passed, merged to develop via PR #5 |
 | 7 | Presenter controls | US-P02, US-P03, US-P04, US-P05, US-P06 | 1.5 | Done — all 5 endpoints + scoring engine smoke tested on live DB |
-| 8 | Player join + answer | US-PL01, US-PL03 | 1.6 | Not started |
+| 8 | Player join + answer | US-PL01, US-PL03 | 1.6 | Done — unit + HTTP smoke tests passed, PR #7 open to develop |
 | 9 | Stats + leaderboard | US-ST01, US-ST02, US-S04 | 1.7 | Not started |
 | 10 | WebSocket hub | US-P01, US-PL02, US-PR01–04 | 1.8 | Not started |
 
@@ -190,12 +190,17 @@ Each item maps to one `/speckit.specify` invocation.
 | 2026-08-14 | Pure `ScoreAnswer` function & unit tests | Authoritative scoring logic isolated in pure Go with 100% boundary testing coverage |
 | 2026-08-14 | In-memory `PauseTracker` & `asked_at` shift on resume | Zero-drift pause/resume management with no extra DB schema columns needed |
 | 2026-08-14 | Transactional reveal with `FOR UPDATE` lock | Atomic calculation of points, leaderboard top 5, and answer distribution |
+| 2026-08-14 | Ephemeral Player JWT with 4h TTL | Role claim "player" and session_id context injection for player routes |
+| 2026-08-14 | Idempotent Answer Submission | Re-submitting existing answer returns HTTP 200 without duplicate rows |
+| 2026-08-14 | Server-side question timer enforcement | Elapsed calculation against session time_per_question_s; 409 QUESTION_CLOSED on timeout |
 
 ---
 
 ## Next session checklist
 
 Before opening next session:
-1. Run `/speckit.specify` for feature #8 — Player join + answer (US-PL01, US-PL03)
-2. Follow the workflow: specify → plan → tasks → implement
-3. After implementation, smoke test then open PR → merge to develop
+1. Merge PR #7 for feature #8
+2. Run `/speckit.specify` for feature #9 — Stats + leaderboard (US-ST01, US-ST02, US-S04)
+3. Follow the workflow: specify → plan → tasks → implement
+4. After implementation, smoke test then open PR → merge to develop
+

@@ -162,7 +162,7 @@ Each item maps to one `/speckit.specify` invocation.
 | 6 | Session lifecycle (lobby → active) | US-S03 | 1.4 | Done — all smoke tests passed, merged to develop via PR #5 |
 | 7 | Presenter controls | US-P02, US-P03, US-P04, US-P05, US-P06 | 1.5 | Done — all 5 endpoints + scoring engine smoke tested on live DB |
 | 8 | Player join + answer | US-PL01, US-PL03 | 1.6 | Done — unit + HTTP smoke tests passed, merged to develop via PR #7 |
-| 9 | Stats + leaderboard | US-ST01, US-ST02, US-S04 | 1.7 | Done — unit + HTTP smoke tests passed |
+| 9 | Stats + leaderboard | US-ST01, US-ST02, US-S04 | 1.7 | Done — unit + HTTP smoke tests passed, merged to develop via PR #8 |
 | 10 | WebSocket hub | US-P01, US-PL02, US-PR01–04 | 1.8 | Not started |
 
 ---

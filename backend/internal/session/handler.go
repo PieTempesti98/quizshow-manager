@@ -108,7 +108,18 @@ type endRequest struct {
 	Reason string `json:"reason"`
 }
 
+type joinRequest struct {
+	PIN      string `json:"pin"`
+	Nickname string `json:"nickname"`
+}
+
+type submitAnswerRequest struct {
+	SessionQuestionID string `json:"session_question_id"`
+	ChosenIndex       *int16 `json:"chosen_index"`
+}
+
 // --- handlers ---
+
 
 // Create handles POST /api/v1/sessions.
 func (h *Handler) Create(c *fiber.Ctx) error {
@@ -667,7 +678,147 @@ func (h *Handler) End(c *fiber.Ctx) error {
 	})
 }
 
+// Join handles POST /api/v1/sessions/:id/join.
+func (h *Handler) Join(c *fiber.Ctx) error {
+	id, err := uuid.Parse(c.Params("id"))
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(api.ErrorResponse{
+			Error: api.ErrorDetail{Code: "VALIDATION_ERROR", Message: "id: must be a valid UUID"},
+		})
+	}
+
+	var req joinRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(api.ErrorResponse{
+			Error: api.ErrorDetail{Code: "VALIDATION_ERROR", Message: "invalid request body"},
+		})
+	}
+
+	result, err := h.svc.Join(c.Context(), id, req.PIN, req.Nickname)
+	if err != nil {
+		if errors.Is(err, ErrSessionNotFound) || errors.Is(err, ErrInvalidPIN) {
+			return c.Status(fiber.StatusNotFound).JSON(api.ErrorResponse{
+				Error: api.ErrorDetail{Code: "INVALID_PIN", Message: "Session not found or PIN does not match"},
+			})
+		}
+		if errors.Is(err, ErrSessionNotInLobby) {
+			return c.Status(fiber.StatusConflict).JSON(api.ErrorResponse{
+				Error: api.ErrorDetail{Code: "SESSION_NOT_IN_LOBBY", Message: "Session is not open for player join"},
+			})
+		}
+		if errors.Is(err, ErrNicknameTaken) {
+			return c.Status(fiber.StatusConflict).JSON(api.ErrorResponse{
+				Error: api.ErrorDetail{Code: "NICKNAME_TAKEN", Message: "Nickname already taken in this session"},
+			})
+		}
+		if isValidationError(err) {
+			return c.Status(fiber.StatusUnprocessableEntity).JSON(api.ErrorResponse{
+				Error: api.ErrorDetail{Code: "VALIDATION_ERROR", Message: trimValidationPrefix(err)},
+			})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(api.ErrorResponse{
+			Error: api.ErrorDetail{Code: "INTERNAL_ERROR", Message: "an unexpected error occurred"},
+		})
+	}
+
+	return c.Status(fiber.StatusCreated).JSON(api.DataResponse{
+		Data: map[string]any{
+			"player_id":        result.PlayerID,
+			"nickname":         result.Nickname,
+			"avatar_color":     result.AvatarColor,
+			"session_id":       result.SessionID,
+			"session_name":     result.SessionName,
+			"player_token":     result.PlayerToken,
+			"token_expires_at": result.TokenExpiresAt.UTC().Format("2006-01-02T15:04:05Z"),
+		},
+	})
+}
+
+// SubmitAnswer handles POST /api/v1/sessions/:session_id/answers.
+func (h *Handler) SubmitAnswer(c *fiber.Ctx) error {
+	sessionID, err := uuid.Parse(c.Params("session_id"))
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(api.ErrorResponse{
+			Error: api.ErrorDetail{Code: "VALIDATION_ERROR", Message: "session_id: must be a valid UUID"},
+		})
+	}
+
+	claims, ok := c.Locals(auth.PlayerClaimsKey).(auth.PlayerClaims)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(api.ErrorResponse{
+			Error: api.ErrorDetail{Code: "UNAUTHORIZED", Message: "Missing or invalid token"},
+		})
+	}
+
+	if claims.SessionID != sessionID {
+		return c.Status(fiber.StatusForbidden).JSON(api.ErrorResponse{
+			Error: api.ErrorDetail{Code: "FORBIDDEN", Message: "Player does not belong to this session"},
+		})
+	}
+
+	var req submitAnswerRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(api.ErrorResponse{
+			Error: api.ErrorDetail{Code: "VALIDATION_ERROR", Message: "invalid request body"},
+		})
+	}
+
+	sqID, err := uuid.Parse(req.SessionQuestionID)
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(api.ErrorResponse{
+			Error: api.ErrorDetail{Code: "VALIDATION_ERROR", Message: "session_question_id: must be a valid UUID"},
+		})
+	}
+
+	if req.ChosenIndex == nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(api.ErrorResponse{
+			Error: api.ErrorDetail{Code: "VALIDATION_ERROR", Message: "chosen_index: required"},
+		})
+	}
+
+	result, err := h.svc.SubmitAnswer(c.Context(), sessionID, claims.PlayerID, sqID, *req.ChosenIndex)
+	if err != nil {
+		if errors.Is(err, ErrQuestionNotFound) || errors.Is(err, ErrSessionNotFound) {
+			return c.Status(fiber.StatusNotFound).JSON(api.ErrorResponse{
+				Error: api.ErrorDetail{Code: "NOT_FOUND", Message: "Question not found in this session"},
+			})
+		}
+		if errors.Is(err, ErrQuestionClosed) {
+			return c.Status(fiber.StatusConflict).JSON(api.ErrorResponse{
+				Error: api.ErrorDetail{Code: "QUESTION_CLOSED", Message: "Timer has expired or question has been revealed"},
+			})
+		}
+		if errors.Is(err, ErrSessionNotActive) {
+			return c.Status(fiber.StatusConflict).JSON(api.ErrorResponse{
+				Error: api.ErrorDetail{Code: "SESSION_NOT_ACTIVE", Message: "Session is not currently active"},
+			})
+		}
+		if isValidationError(err) {
+			return c.Status(fiber.StatusUnprocessableEntity).JSON(api.ErrorResponse{
+				Error: api.ErrorDetail{Code: "VALIDATION_ERROR", Message: trimValidationPrefix(err)},
+			})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(api.ErrorResponse{
+			Error: api.ErrorDetail{Code: "INTERNAL_ERROR", Message: "an unexpected error occurred"},
+		})
+	}
+
+	statusCode := fiber.StatusCreated
+	if result.IsDuplicate {
+		statusCode = fiber.StatusOK
+	}
+
+	return c.Status(statusCode).JSON(api.DataResponse{
+		Data: map[string]any{
+			"answer_id":    result.AnswerID,
+			"chosen_index": result.ChosenIndex,
+			"answered_at":  result.AnsweredAt.UTC().Format("2006-01-02T15:04:05Z"),
+		},
+	})
+}
+
 // --- helpers ---
+
 
 func parseCategoryIDs(raw []string) ([]uuid.UUID, error) {
 	ids := make([]uuid.UUID, 0, len(raw))

@@ -77,9 +77,15 @@ func main() {
 	// Public: no auth required (must be registered before the protected group)
 	v1.Get("/questions/import/template", questionHandler.ImportTemplate)
 	v1.Get("/sessions/:id/qr", sessionHandler.GetQR)
+	v1.Post("/sessions/:id/join", sessionHandler.Join)
+
+	// Player-protected routes — require player Bearer token
+	playerSession := v1.Group("/sessions/:session_id", auth.RequirePlayer(cfg))
+	playerSession.Post("/answers", sessionHandler.SubmitAnswer)
 
 	// Protected routes — require admin Bearer token
 	protected := v1.Group("", auth.RequireAdmin(cfg))
+
 	protected.Post("/auth/logout", h.Logout)
 
 	protected.Get("/categories", categoryHandler.List)

@@ -130,3 +130,69 @@ func TestRequireAdmin_ValidToken(t *testing.T) {
 		t.Errorf("expected admin_id %s, got %s", adminID, result.AdminID)
 	}
 }
+
+func newPlayerTestApp(cfg Config) *fiber.App {
+	app := fiber.New(fiber.Config{ErrorHandler: func(c *fiber.Ctx, _ error) error {
+		return c.Status(500).SendString("internal error")
+	}})
+	app.Get("/player-protected", RequirePlayer(cfg), func(c *fiber.Ctx) error {
+		claims := c.Locals(PlayerClaimsKey).(PlayerClaims)
+		return c.Status(200).JSON(fiber.Map{
+			"player_id":  claims.PlayerID,
+			"session_id": claims.SessionID,
+		})
+	})
+	return app
+}
+
+func TestRequirePlayer_Scenarios(t *testing.T) {
+	app := newPlayerTestApp(testCfg)
+
+	// 1. No header
+	req := httptest.NewRequest("GET", "/player-protected", nil)
+	resp, _ := app.Test(req)
+	if resp.StatusCode != 401 {
+		t.Errorf("expected 401 for no header, got %d", resp.StatusCode)
+	}
+
+	// 2. Admin token instead of player token -> 403
+	adminID := uuid.New()
+	adminToken, _, _ := IssueAccessToken(adminID, testCfg)
+	req = httptest.NewRequest("GET", "/player-protected", nil)
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	resp, _ = app.Test(req)
+	if resp.StatusCode != 403 {
+		t.Errorf("expected 403 for admin token on player route, got %d", resp.StatusCode)
+	}
+
+	// 3. Valid player token -> 200
+	playerID := uuid.New()
+	sessionID := uuid.New()
+	playerToken, _, _ := IssuePlayerToken(playerID, sessionID, testCfg)
+	req = httptest.NewRequest("GET", "/player-protected", nil)
+	req.Header.Set("Authorization", "Bearer "+playerToken)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("app.Test: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("expected 200 for player token, got %d", resp.StatusCode)
+	}
+
+	var res struct {
+		PlayerID  string `json:"player_id"`
+		SessionID string `json:"session_id"`
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if err := json.Unmarshal(body, &res); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if res.PlayerID != playerID.String() {
+		t.Errorf("expected player_id %s, got %s", playerID, res.PlayerID)
+	}
+	if res.SessionID != sessionID.String() {
+		t.Errorf("expected session_id %s, got %s", sessionID, res.SessionID)
+	}
+}
+

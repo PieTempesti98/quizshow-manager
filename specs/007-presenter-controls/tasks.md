@@ -17,8 +17,8 @@
 
 **Purpose**: Implement the pure domain scoring engine and unit test suite before any database or HTTP integration.
 
-- [ ] T001 Implement pure `ScoreAnswer(pointsPerAnswer int, isCorrect bool, speedBonusEnabled bool, timeRemainingMs int64, totalTimeMs int64) int` function in `backend/internal/session/scoring.go`
-- [ ] T002 [P] Implement table-driven unit tests for `ScoreAnswer` in `backend/internal/session/scoring_test.go` covering base score, speed bonus multiplier, boundary clamps, wrong answers, and timeouts
+- [x] T001 Implement pure `ScoreAnswer(pointsPerAnswer int, isCorrect bool, speedBonusEnabled bool, timeRemainingMs int64, totalTimeMs int64) int` function in `backend/internal/session/scoring.go`
+- [x] T002 [P] Implement table-driven unit tests for `ScoreAnswer` in `backend/internal/session/scoring_test.go` covering base score, speed bonus multiplier, boundary clamps, wrong answers, and timeouts
 
 ---
 
@@ -28,9 +28,9 @@
 
 **⚠️ CRITICAL**: Must be complete before user story implementation begins.
 
-- [ ] T003 [P] Implement thread-safe in-memory `PauseTracker` in `backend/internal/session/pause_tracker.go` with `Pause`, `Resume`, `Clear`, and `IsPaused` methods
-- [ ] T004 [P] Add sentinel errors (`ErrSessionNotActive`, `ErrQuestionNotRevealed`, `ErrNoMoreQuestions`, `ErrNoActiveQuestion`, `ErrQuestionAlreadyRevealed`, `ErrTimerAlreadyPaused`, `ErrTimerNotPaused`, `ErrSessionAlreadyEnded`), response DTOs, and expanded `SessionEventBroadcaster` / `noopBroadcaster` in `backend/internal/session/models.go`
-- [ ] T005 Extend `SessionRepo` interface in `backend/internal/session/repository.go` and `Service` interface / `service` struct in `backend/internal/session/service.go` with presenter method signatures
+- [x] T003 [P] Implement thread-safe in-memory `PauseTracker` in `backend/internal/session/pause_tracker.go` with `Pause`, `Resume`, `Clear`, and `IsPaused` methods
+- [x] T004 [P] Add sentinel errors (`ErrSessionNotActive`, `ErrQuestionNotRevealed`, `ErrNoMoreQuestions`, `ErrNoActiveQuestion`, `ErrQuestionAlreadyRevealed`, `ErrTimerAlreadyPaused`, `ErrTimerNotPaused`, `ErrSessionAlreadyEnded`), response DTOs, and expanded `SessionEventBroadcaster` / `noopBroadcaster` in `backend/internal/session/models.go`
+- [x] T005 Extend `SessionRepo` interface in `backend/internal/session/repository.go` and `Service` interface / `service` struct in `backend/internal/session/service.go` with presenter method signatures
 
 **Checkpoint**: Foundation ready — user story phases can proceed.
 
@@ -44,9 +44,9 @@
 
 ### Implementation for User Story 1
 
-- [ ] T006 [US1] Implement `SessionRepository.NextQuestion` in `backend/internal/session/repository.go`: verify session is active, ensure no unrevealed active question exists, fetch next unasked question by position, update `asked_at = now()`, return question details without `correct_index`
-- [ ] T007 [US1] Implement `service.NextQuestion` in `backend/internal/session/service.go`: call `s.repo.NextQuestion`, invoke `s.broadcaster.BroadcastQuestionStarted(...)`, return `NextQuestionResult`
-- [ ] T008 [US1] Implement `Handler.NextQuestion` in `backend/internal/session/handler.go`: parse `:id` UUID, call service, map `ErrSessionNotFound` (404), `ErrSessionNotActive` (409 `SESSION_NOT_ACTIVE`), `ErrQuestionNotRevealed` (409 `QUESTION_NOT_REVEALED`), `ErrNoMoreQuestions` (409 `NO_MORE_QUESTIONS`), return 200 with standard envelope
+- [x] T006 [US1] Implement `SessionRepository.NextQuestion` in `backend/internal/session/repository.go`: verify session is active, ensure no unrevealed active question exists, fetch next unasked question by position, update `asked_at = now()`, return question details without `correct_index`
+- [x] T007 [US1] Implement `service.NextQuestion` in `backend/internal/session/service.go`: call `s.repo.NextQuestion`, invoke `s.broadcaster.BroadcastQuestionStarted(...)`, return `NextQuestionResult`
+- [x] T008 [US1] Implement `Handler.NextQuestion` in `backend/internal/session/handler.go`: parse `:id` UUID, call service, map `ErrSessionNotFound` (404), `ErrSessionNotActive` (409 `SESSION_NOT_ACTIVE`), `ErrQuestionNotRevealed` (409 `QUESTION_NOT_REVEALED`), `ErrNoMoreQuestions` (409 `NO_MORE_QUESTIONS`), return 200 with standard envelope
 
 **Checkpoint**: `POST /next-question` is functional and testable.
 
@@ -60,9 +60,9 @@
 
 ### Implementation for User Story 2
 
-- [ ] T009 [US2] Implement `SessionRepository.RevealQuestion` in `backend/internal/session/repository.go`: in a single transaction (`tx`), lock active question, set `revealed_at = now()`, lock answers `FOR UPDATE`, score answers with `ScoreAnswer()`, update `answers` rows (`is_correct`, `points_awarded`, `answer_time_ms`), increment `players.total_score`, compute `answer_distribution` and top 5 leaderboard
-- [ ] T010 [US2] Implement `service.Reveal` in `backend/internal/session/service.go`: clear pause state for session in `pauseTracker`, call `s.repo.RevealQuestion`, invoke `s.broadcaster.BroadcastQuestionRevealed(...)`, return `RevealResult`
-- [ ] T011 [US2] Implement `Handler.Reveal` in `backend/internal/session/handler.go`: parse `:id` UUID, call service, map `ErrSessionNotFound` (404), `ErrSessionNotActive` (409 `SESSION_NOT_ACTIVE`), `ErrNoActiveQuestion` (409 `NO_ACTIVE_QUESTION`), `ErrQuestionAlreadyRevealed` (409 `QUESTION_ALREADY_REVEALED`), return 200 with standard envelope
+- [x] T009 [US2] Implement `SessionRepository.RevealQuestion` in `backend/internal/session/repository.go`: in a single transaction (`tx`), lock active question, set `revealed_at = now()`, lock answers `FOR UPDATE`, score answers with `ScoreAnswer()`, update `answers` rows (`is_correct`, `points_awarded`, `answer_time_ms`), increment `players.total_score`, compute `answer_distribution` and top 5 leaderboard
+- [x] T010 [US2] Implement `service.Reveal` in `backend/internal/session/service.go`: clear pause state for session in `pauseTracker`, call `s.repo.RevealQuestion`, invoke `s.broadcaster.BroadcastQuestionRevealed(...)`, return `RevealResult`
+- [x] T011 [US2] Implement `Handler.Reveal` in `backend/internal/session/handler.go`: parse `:id` UUID, call service, map `ErrSessionNotFound` (404), `ErrSessionNotActive` (409 `SESSION_NOT_ACTIVE`), `ErrNoActiveQuestion` (409 `NO_ACTIVE_QUESTION`), `ErrQuestionAlreadyRevealed` (409 `QUESTION_ALREADY_REVEALED`), return 200 with standard envelope
 
 **Checkpoint**: `POST /reveal` and scoring engine are functional and testable.
 
@@ -76,11 +76,11 @@
 
 ### Implementation for User Story 3
 
-- [ ] T012 [US3] Implement `SessionRepository.GetActiveQuestion` and `SessionRepository.ShiftQuestionAskedAt` in `backend/internal/session/repository.go` to support pause verification and timestamp adjustment (`UPDATE session_questions SET asked_at = asked_at + $1 WHERE id = $2`)
-- [ ] T013 [US3] Implement `service.PauseTimer` and `service.ResumeTimer` in `backend/internal/session/service.go`:
+- [x] T012 [US3] Implement `SessionRepository.GetActiveQuestion` and `SessionRepository.ShiftQuestionAskedAt` in `backend/internal/session/repository.go` to support pause verification and timestamp adjustment (`UPDATE session_questions SET asked_at = asked_at + $1 WHERE id = $2`)
+- [x] T013 [US3] Implement `service.PauseTimer` and `service.ResumeTimer` in `backend/internal/session/service.go`:
   - `PauseTimer`: verify active unrevealed question, record pause in `pauseTracker`, calculate remaining time, invoke `s.broadcaster.BroadcastTimerPaused(...)`
   - `ResumeTimer`: retrieve pause timestamp from `pauseTracker`, calculate pause duration delta, call `s.repo.ShiftQuestionAskedAt`, invoke `s.broadcaster.BroadcastTimerResumed(...)`
-- [ ] T014 [US3] Implement `Handler.PauseTimer` and `Handler.ResumeTimer` in `backend/internal/session/handler.go`: parse `:id` UUID, call service, map `ErrSessionNotFound` (404), `ErrSessionNotActive` (409), `ErrNoActiveQuestion` (409), `ErrTimerAlreadyPaused` (409 `TIMER_ALREADY_PAUSED`), `ErrTimerNotPaused` (409 `TIMER_NOT_PAUSED`), return 200 with standard envelope
+- [x] T014 [US3] Implement `Handler.PauseTimer` and `Handler.ResumeTimer` in `backend/internal/session/handler.go`: parse `:id` UUID, call service, map `ErrSessionNotFound` (404), `ErrSessionNotActive` (409), `ErrNoActiveQuestion` (409), `ErrTimerAlreadyPaused` (409 `TIMER_ALREADY_PAUSED`), `ErrTimerNotPaused` (409 `TIMER_NOT_PAUSED`), return 200 with standard envelope
 
 **Checkpoint**: Timer pause/resume controls are functional and testable.
 
@@ -94,9 +94,9 @@
 
 ### Implementation for User Story 4
 
-- [ ] T015 [US4] Implement `SessionRepository.EndSession` in `backend/internal/session/repository.go`: check session is not already in terminal status (`completed`/`cancelled`), update `sessions SET status = 'completed', ended_at = now(), updated_at = now() WHERE id = $1`
-- [ ] T016 [US4] Implement `service.End` in `backend/internal/session/service.go`: clear pause state for session in `pauseTracker`, call `s.repo.EndSession`, invoke `s.broadcaster.BroadcastSessionEnded(...)`, return `EndSessionResult`
-- [ ] T017 [US4] Implement `Handler.End` in `backend/internal/session/handler.go`: parse `:id` UUID, parse optional `reason` from request body (default `"completed"`), call service, map `ErrSessionNotFound` (404), `ErrSessionAlreadyEnded` (409 `SESSION_ALREADY_ENDED`), return 200 with standard envelope
+- [x] T015 [US4] Implement `SessionRepository.EndSession` in `backend/internal/session/repository.go`: check session is not already in terminal status (`completed`/`cancelled`), update `sessions SET status = 'completed', ended_at = now(), updated_at = now() WHERE id = $1`
+- [x] T016 [US4] Implement `service.End` in `backend/internal/session/service.go`: clear pause state for session in `pauseTracker`, call `s.repo.EndSession`, invoke `s.broadcaster.BroadcastSessionEnded(...)`, return `EndSessionResult`
+- [x] T017 [US4] Implement `Handler.End` in `backend/internal/session/handler.go`: parse `:id` UUID, parse optional `reason` from request body (default `"completed"`), call service, map `ErrSessionNotFound` (404), `ErrSessionAlreadyEnded` (409 `SESSION_ALREADY_ENDED`), return 200 with standard envelope
 
 **Checkpoint**: `POST /end` is functional and testable.
 
@@ -106,7 +106,7 @@
 
 **Purpose**: Register all 5 new presenter routes on the Fiber server.
 
-- [ ] T018 Register 5 presenter routes on the protected router group in `backend/cmd/server/main.go` (`POST /sessions/:id/next-question`, `POST /sessions/:id/pause-timer`, `POST /sessions/:id/resume-timer`, `POST /sessions/:id/reveal`, `POST /sessions/:id/end`)
+- [x] T018 Register 5 presenter routes on the protected router group in `backend/cmd/server/main.go` (`POST /sessions/:id/next-question`, `POST /sessions/:id/pause-timer`, `POST /sessions/:id/resume-timer`, `POST /sessions/:id/reveal`, `POST /sessions/:id/end`)
 
 ---
 
@@ -114,9 +114,9 @@
 
 **Purpose**: Run test suites, execute end-to-end smoke verification, and update project memory.
 
-- [ ] T019 Run automated unit tests in `backend/internal/session/scoring_test.go` (`cd backend && go test -v ./internal/session/...`)
-- [ ] T020 Run end-to-end smoke test sequence from `specs/007-presenter-controls/quickstart.md` against live backend instance
-- [ ] T021 [P] Update `GEMINI.md` Recent Changes Log with Feature 007 presenter controls summary
+- [x] T019 Run automated unit tests in `backend/internal/session/scoring_test.go` (`cd backend && go test -v ./internal/session/...`)
+- [x] T020 Run end-to-end smoke test sequence from `specs/007-presenter-controls/quickstart.md` against live backend instance
+- [x] T021 [P] Update `GEMINI.md` Recent Changes Log with Feature 007 presenter controls summary
 
 ---
 

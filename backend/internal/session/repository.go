@@ -4,14 +4,43 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"math/rand"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+// NextQuestionData holds the question payload for advancing to the next question.
+type NextQuestionData struct {
+	SessionQuestionID uuid.UUID
+	Position          int
+	Total             int
+	Question          QuestionSummary
+	TimeLimitS        int
+	AskedAt           time.Time
+}
+
+// ActiveQuestionData holds metadata about the question currently in progress.
+type ActiveQuestionData struct {
+	SessionQuestionID uuid.UUID
+	SessionID         uuid.UUID
+	TimeLimitS        int
+	AskedAt           time.Time
+}
+
+// RevealData holds the payload returned after scoring a question reveal.
+type RevealData struct {
+	SessionQuestionID  uuid.UUID
+	CorrectIndex       int
+	AnswerDistribution []AnswerDistributionItem
+	Top5               []LeaderboardEntry
+	RevealedAt         time.Time
+}
 
 // SessionRepo defines the persistence operations for sessions.
 type SessionRepo interface {
@@ -24,6 +53,11 @@ type SessionRepo interface {
 	ValidateCategoryIDs(ctx context.Context, ids []uuid.UUID) error
 	OpenLobby(ctx context.Context, id uuid.UUID) (Session, error)
 	Launch(ctx context.Context, id uuid.UUID) (Session, int, error)
+	NextQuestion(ctx context.Context, id uuid.UUID) (NextQuestionData, error)
+	GetActiveQuestion(ctx context.Context, id uuid.UUID) (ActiveQuestionData, error)
+	ShiftQuestionAskedAt(ctx context.Context, sessionQuestionID uuid.UUID, delta time.Duration) error
+	RevealQuestion(ctx context.Context, id uuid.UUID) (RevealData, error)
+	EndSession(ctx context.Context, id uuid.UUID, reason string) (Session, error)
 }
 
 // SessionRepository implements SessionRepo using pgxpool.
@@ -264,7 +298,6 @@ func (r *SessionRepository) FindByID(ctx context.Context, id uuid.UUID) (Session
 }
 
 func (r *SessionRepository) Update(ctx context.Context, id uuid.UUID, u SessionUpdate) (Session, error) {
-	// Handle category replacement in a transaction when CategoryIDs is non-nil.
 	if u.CategoryIDs != nil {
 		tx, err := r.pool.Begin(ctx)
 		if err != nil {
@@ -376,7 +409,6 @@ func (r *SessionRepository) OpenLobby(ctx context.Context, id uuid.UUID) (Sessio
 		&sess.CreatedBy, &sess.CreatedAt, &sess.UpdatedAt, &sess.DeletedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
-		// Distinguish 404 (not found) from 409 (wrong status).
 		var exists bool
 		_ = r.pool.QueryRow(ctx,
 			`SELECT EXISTS(SELECT 1 FROM sessions WHERE id = $1 AND deleted_at IS NULL)`, id,
@@ -415,7 +447,6 @@ func (r *SessionRepository) Launch(ctx context.Context, id uuid.UUID) (Session, 
 		return Session{}, 0, ErrSessionNotInLobby
 	}
 
-	// Draw questions randomly — use all available if fewer than question_count.
 	const drawQ = `
 		SELECT q.id
 		FROM questions q
@@ -500,4 +531,405 @@ func (r *SessionRepository) Delete(ctx context.Context, id uuid.UUID) error {
 		return fmt.Errorf("session repo: delete: %w", err)
 	}
 	return nil
+}
+
+// NextQuestion advances the active session to the next unasked question.
+func (r *SessionRepository) NextQuestion(ctx context.Context, id uuid.UUID) (NextQuestionData, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return NextQuestionData{}, fmt.Errorf("session repo: next-question begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var status string
+	var timeLimitS int16
+	err = tx.QueryRow(ctx,
+		`SELECT status::text, time_per_question_s FROM sessions WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
+		id,
+	).Scan(&status, &timeLimitS)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return NextQuestionData{}, ErrSessionNotFound
+	}
+	if err != nil {
+		return NextQuestionData{}, fmt.Errorf("session repo: next-question lock session: %w", err)
+	}
+	if status != "active" {
+		return NextQuestionData{}, ErrSessionNotActive
+	}
+
+	// Guard: Ensure no question is currently active and unrevealed.
+	var hasUnrevealed bool
+	err = tx.QueryRow(ctx,
+		`SELECT EXISTS(
+			SELECT 1 FROM session_questions
+			WHERE session_id = $1 AND asked_at IS NOT NULL AND revealed_at IS NULL
+		)`, id,
+	).Scan(&hasUnrevealed)
+	if err != nil {
+		return NextQuestionData{}, fmt.Errorf("session repo: next-question check unrevealed: %w", err)
+	}
+	if hasUnrevealed {
+		return NextQuestionData{}, ErrQuestionNotRevealed
+	}
+
+	// Fetch next unasked question (lowest position where asked_at IS NULL).
+	const selectNext = `
+		SELECT sq.id, sq.position, q.text, q.option_a, q.option_b, q.option_c, q.option_d
+		FROM session_questions sq
+		JOIN questions q ON q.id = sq.question_id
+		WHERE sq.session_id = $1 AND sq.asked_at IS NULL
+		ORDER BY sq.position ASC
+		LIMIT 1
+		FOR UPDATE OF sq`
+
+	var sqID uuid.UUID
+	var position int16
+	var qText, optA, optB, optC, optD string
+	err = tx.QueryRow(ctx, selectNext, id).Scan(
+		&sqID, &position, &qText, &optA, &optB, &optC, &optD,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return NextQuestionData{}, ErrNoMoreQuestions
+	}
+	if err != nil {
+		return NextQuestionData{}, fmt.Errorf("session repo: next-question select: %w", err)
+	}
+
+	// Mark question as asked.
+	var askedAt time.Time
+	err = tx.QueryRow(ctx,
+		`UPDATE session_questions SET asked_at = now() WHERE id = $1 RETURNING asked_at`,
+		sqID,
+	).Scan(&askedAt)
+	if err != nil {
+		return NextQuestionData{}, fmt.Errorf("session repo: next-question update asked_at: %w", err)
+	}
+
+	// Get total questions in session.
+	var total int
+	err = tx.QueryRow(ctx,
+		`SELECT COUNT(*) FROM session_questions WHERE session_id = $1`, id,
+	).Scan(&total)
+	if err != nil {
+		return NextQuestionData{}, fmt.Errorf("session repo: next-question count total: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return NextQuestionData{}, fmt.Errorf("session repo: next-question commit: %w", err)
+	}
+
+	return NextQuestionData{
+		SessionQuestionID: sqID,
+		Position:          int(position),
+		Total:             total,
+		Question: QuestionSummary{
+			Text:    qText,
+			OptionA: optA,
+			OptionB: optB,
+			OptionC: optC,
+			OptionD: optD,
+		},
+		TimeLimitS: int(timeLimitS),
+		AskedAt:    askedAt,
+	}, nil
+}
+
+// GetActiveQuestion retrieves metadata for the question currently in progress.
+func (r *SessionRepository) GetActiveQuestion(ctx context.Context, id uuid.UUID) (ActiveQuestionData, error) {
+	const q = `
+		SELECT s.status::text, s.time_per_question_s, sq.id, sq.asked_at
+		FROM sessions s
+		JOIN session_questions sq ON sq.session_id = s.id
+		WHERE s.id = $1 AND s.deleted_at IS NULL AND sq.asked_at IS NOT NULL AND sq.revealed_at IS NULL`
+
+	var status string
+	var timeLimitS int16
+	var sqID uuid.UUID
+	var askedAt time.Time
+
+	err := r.pool.QueryRow(ctx, q, id).Scan(&status, &timeLimitS, &sqID, &askedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		// Distinguish 404 vs 409 vs no active question.
+		var sStatus string
+		checkErr := r.pool.QueryRow(ctx,
+			`SELECT status::text FROM sessions WHERE id = $1 AND deleted_at IS NULL`, id,
+		).Scan(&sStatus)
+		if errors.Is(checkErr, pgx.ErrNoRows) {
+			return ActiveQuestionData{}, ErrSessionNotFound
+		}
+		if checkErr == nil && sStatus != "active" {
+			return ActiveQuestionData{}, ErrSessionNotActive
+		}
+		return ActiveQuestionData{}, ErrNoActiveQuestion
+	}
+	if err != nil {
+		return ActiveQuestionData{}, fmt.Errorf("session repo: get active question: %w", err)
+	}
+	if status != "active" {
+		return ActiveQuestionData{}, ErrSessionNotActive
+	}
+
+	return ActiveQuestionData{
+		SessionQuestionID: sqID,
+		SessionID:         id,
+		TimeLimitS:        int(timeLimitS),
+		AskedAt:           askedAt,
+	}, nil
+}
+
+// ShiftQuestionAskedAt adjusts asked_at by adding the pause duration delta.
+func (r *SessionRepository) ShiftQuestionAskedAt(ctx context.Context, sessionQuestionID uuid.UUID, delta time.Duration) error {
+	micros := delta.Microseconds()
+	const q = `
+		UPDATE session_questions
+		SET asked_at = asked_at + $1 * interval '1 microsecond'
+		WHERE id = $2`
+
+	res, err := r.pool.Exec(ctx, q, micros, sessionQuestionID)
+	if err != nil {
+		return fmt.Errorf("session repo: shift asked_at: %w", err)
+	}
+	if res.RowsAffected() == 0 {
+		return ErrNoActiveQuestion
+	}
+	return nil
+}
+
+type answerRecord struct {
+	id          uuid.UUID
+	playerID    uuid.UUID
+	chosenIndex *int16
+	answeredAt  time.Time
+}
+
+// RevealQuestion scores all answers for the current active question and computes round stats.
+func (r *SessionRepository) RevealQuestion(ctx context.Context, id uuid.UUID) (RevealData, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return RevealData{}, fmt.Errorf("session repo: reveal begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	// Lock session and active question.
+	const selectActive = `
+		SELECT s.status::text, s.points_per_answer, s.time_per_question_s, s.speed_bonus_enabled,
+		       sq.id, sq.asked_at, q.correct_index
+		FROM sessions s
+		JOIN session_questions sq ON sq.session_id = s.id
+		JOIN questions q ON q.id = sq.question_id
+		WHERE s.id = $1 AND s.deleted_at IS NULL AND sq.asked_at IS NOT NULL AND sq.revealed_at IS NULL
+		FOR UPDATE OF s, sq`
+
+	var status string
+	var pointsPerAnswer int
+	var timeLimitS int16
+	var speedBonusEnabled bool
+	var sqID uuid.UUID
+	var askedAt time.Time
+	var correctIndex int16
+
+	err = tx.QueryRow(ctx, selectActive, id).Scan(
+		&status, &pointsPerAnswer, &timeLimitS, &speedBonusEnabled,
+		&sqID, &askedAt, &correctIndex,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		var sStatus string
+		checkErr := tx.QueryRow(ctx,
+			`SELECT status::text FROM sessions WHERE id = $1 AND deleted_at IS NULL`, id,
+		).Scan(&sStatus)
+		if errors.Is(checkErr, pgx.ErrNoRows) {
+			return RevealData{}, ErrSessionNotFound
+		}
+		if checkErr == nil && sStatus != "active" {
+			return RevealData{}, ErrSessionNotActive
+		}
+
+		// Check if the most recent question was already revealed
+		var hasAnyAsked bool
+		_ = tx.QueryRow(ctx,
+			`SELECT EXISTS(SELECT 1 FROM session_questions WHERE session_id = $1 AND asked_at IS NOT NULL)`, id,
+		).Scan(&hasAnyAsked)
+		if hasAnyAsked {
+			return RevealData{}, ErrQuestionAlreadyRevealed
+		}
+		return RevealData{}, ErrNoActiveQuestion
+	}
+	if err != nil {
+		return RevealData{}, fmt.Errorf("session repo: reveal lock active: %w", err)
+	}
+	if status != "active" {
+		return RevealData{}, ErrSessionNotActive
+	}
+
+	// Mark question revealed_at = now()
+	var revealedAt time.Time
+	err = tx.QueryRow(ctx,
+		`UPDATE session_questions SET revealed_at = now() WHERE id = $1 RETURNING revealed_at`,
+		sqID,
+	).Scan(&revealedAt)
+	if err != nil {
+		return RevealData{}, fmt.Errorf("session repo: reveal update revealed_at: %w", err)
+	}
+
+	// Fetch all answers for this question FOR UPDATE
+	const selectAnswers = `
+		SELECT id, player_id, chosen_index, answered_at
+		FROM answers
+		WHERE session_question_id = $1
+		FOR UPDATE`
+
+	rows, err := tx.Query(ctx, selectAnswers, sqID)
+	if err != nil {
+		return RevealData{}, fmt.Errorf("session repo: reveal select answers: %w", err)
+	}
+
+	var answers []answerRecord
+	counts := [4]int{0, 0, 0, 0}
+
+	for rows.Next() {
+		var ans answerRecord
+		if err := rows.Scan(&ans.id, &ans.playerID, &ans.chosenIndex, &ans.answeredAt); err != nil {
+			rows.Close()
+			return RevealData{}, fmt.Errorf("session repo: reveal scan answer: %w", err)
+		}
+		answers = append(answers, ans)
+		if ans.chosenIndex != nil && *ans.chosenIndex >= 0 && *ans.chosenIndex <= 3 {
+			counts[*ans.chosenIndex]++
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return RevealData{}, fmt.Errorf("session repo: reveal answers error: %w", err)
+	}
+
+	// Score answers and update player scores
+	totalTimeMs := int64(timeLimitS) * 1000
+	for _, ans := range answers {
+		isCorrect := (ans.chosenIndex != nil && *ans.chosenIndex == correctIndex)
+		elapsedMs := ans.answeredAt.Sub(askedAt).Milliseconds()
+		timeRemainingMs := totalTimeMs - elapsedMs
+		if timeRemainingMs < 0 {
+			timeRemainingMs = 0
+		}
+		if timeRemainingMs > totalTimeMs {
+			timeRemainingMs = totalTimeMs
+		}
+		answerTimeMs := int(elapsedMs)
+		if answerTimeMs < 0 {
+			answerTimeMs = 0
+		}
+
+		pointsAwarded := ScoreAnswer(pointsPerAnswer, isCorrect, speedBonusEnabled, timeRemainingMs, totalTimeMs)
+
+		_, err := tx.Exec(ctx,
+			`UPDATE answers SET is_correct = $1, points_awarded = $2, answer_time_ms = $3 WHERE id = $4`,
+			isCorrect, pointsAwarded, answerTimeMs, ans.id,
+		)
+		if err != nil {
+			return RevealData{}, fmt.Errorf("session repo: reveal update answer %s: %w", ans.id, err)
+		}
+
+		if pointsAwarded > 0 {
+			_, err := tx.Exec(ctx,
+				`UPDATE players SET total_score = total_score + $1 WHERE id = $2`,
+				pointsAwarded, ans.playerID,
+			)
+			if err != nil {
+				return RevealData{}, fmt.Errorf("session repo: reveal update player score %s: %w", ans.playerID, err)
+			}
+		}
+	}
+
+	// Compute distribution
+	totalAnswers := len(answers)
+	distribution := make([]AnswerDistributionItem, 4)
+	for i := 0; i < 4; i++ {
+		pct := 0
+		if totalAnswers > 0 {
+			pct = int(math.Round(float64(counts[i]) / float64(totalAnswers) * 100))
+		}
+		distribution[i] = AnswerDistributionItem{
+			Index:   i,
+			Count:   counts[i],
+			Percent: pct,
+		}
+	}
+
+	// Fetch Top 5 leaderboard
+	const selectTop5 = `
+		SELECT nickname, total_score, avatar_color
+		FROM players
+		WHERE session_id = $1
+		ORDER BY total_score DESC, joined_at ASC, id ASC
+		LIMIT 5`
+
+	topRows, err := tx.Query(ctx, selectTop5, id)
+	if err != nil {
+		return RevealData{}, fmt.Errorf("session repo: reveal query top5: %w", err)
+	}
+	defer topRows.Close()
+
+	var top5 []LeaderboardEntry
+	rank := 1
+	for topRows.Next() {
+		var entry LeaderboardEntry
+		if err := topRows.Scan(&entry.Nickname, &entry.TotalScore, &entry.AvatarColor); err != nil {
+			return RevealData{}, fmt.Errorf("session repo: reveal scan top5: %w", err)
+		}
+		entry.Rank = rank
+		top5 = append(top5, entry)
+		rank++
+	}
+	if err := topRows.Err(); err != nil {
+		return RevealData{}, fmt.Errorf("session repo: reveal top5 error: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return RevealData{}, fmt.Errorf("session repo: reveal commit: %w", err)
+	}
+
+	return RevealData{
+		SessionQuestionID:  sqID,
+		CorrectIndex:       int(correctIndex),
+		AnswerDistribution: distribution,
+		Top5:               top5,
+		RevealedAt:         revealedAt,
+	}, nil
+}
+
+// EndSession marks an active, lobby, or draft session as completed.
+func (r *SessionRepository) EndSession(ctx context.Context, id uuid.UUID, reason string) (Session, error) {
+	var status string
+	err := r.pool.QueryRow(ctx,
+		`SELECT status::text FROM sessions WHERE id = $1 AND deleted_at IS NULL`, id,
+	).Scan(&status)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Session{}, ErrSessionNotFound
+	}
+	if err != nil {
+		return Session{}, fmt.Errorf("session repo: end status check: %w", err)
+	}
+	if status == "completed" || status == "cancelled" {
+		return Session{}, ErrSessionAlreadyEnded
+	}
+
+	const q = `
+		UPDATE sessions
+		SET status = 'completed', ended_at = now(), updated_at = now()
+		WHERE id = $1
+		RETURNING id, name, pin, status::text, question_count, time_per_question_s,
+		          points_per_answer, speed_bonus_enabled, started_at, ended_at,
+		          created_by, created_at, updated_at, deleted_at`
+
+	var sess Session
+	err = r.pool.QueryRow(ctx, q, id).Scan(
+		&sess.ID, &sess.Name, &sess.PIN, &sess.Status,
+		&sess.QuestionCount, &sess.TimePerQuestionS, &sess.PointsPerAnswer,
+		&sess.SpeedBonusEnabled, &sess.StartedAt, &sess.EndedAt,
+		&sess.CreatedBy, &sess.CreatedAt, &sess.UpdatedAt, &sess.DeletedAt,
+	)
+	if err != nil {
+		return Session{}, fmt.Errorf("session repo: end session: %w", err)
+	}
+	return sess, nil
 }

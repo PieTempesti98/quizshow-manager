@@ -85,7 +85,54 @@ var (
 	ErrTimerAlreadyPaused      = errors.New("timer is already paused")
 	ErrTimerNotPaused          = errors.New("timer is not paused")
 	ErrSessionAlreadyEnded     = errors.New("session has already ended")
+	ErrNicknameTaken           = errors.New("nickname already taken in this session")
+	ErrInvalidPIN              = errors.New("invalid PIN")
+	ErrQuestionClosed          = errors.New("question is closed or timer has expired")
+	ErrQuestionNotFound        = errors.New("question not found in active session")
+	ErrForbiddenSession        = errors.New("player does not belong to this session")
 )
+
+// Player represents an ephemeral participant in an active/lobby session.
+type Player struct {
+	ID             uuid.UUID
+	SessionID      uuid.UUID
+	Nickname       string
+	AvatarColor    string
+	TotalScore     int
+	JoinedAt       time.Time
+	DisconnectedAt *time.Time
+}
+
+// Answer represents a participant's submission for a question.
+type Answer struct {
+	ID                uuid.UUID
+	PlayerID          uuid.UUID
+	SessionQuestionID uuid.UUID
+	ChosenIndex       *int16
+	IsCorrect         bool
+	PointsAwarded     int
+	AnswerTimeMs      *int
+	AnsweredAt        time.Time
+}
+
+// PlayerJoinResult is returned by Service.Join.
+type PlayerJoinResult struct {
+	PlayerID       string    `json:"player_id"`
+	Nickname       string    `json:"nickname"`
+	AvatarColor    string    `json:"avatar_color"`
+	SessionID      string    `json:"session_id"`
+	SessionName    string    `json:"session_name"`
+	PlayerToken    string    `json:"player_token"`
+	TokenExpiresAt time.Time `json:"token_expires_at"`
+}
+
+// AnswerSubmitResult is returned by Service.SubmitAnswer.
+type AnswerSubmitResult struct {
+	AnswerID    string    `json:"answer_id"`
+	ChosenIndex int16     `json:"chosen_index"`
+	AnsweredAt  time.Time `json:"answered_at"`
+	IsDuplicate bool      `json:"-"`
+}
 
 // OpenLobbyResult is returned by Service.OpenLobby.
 type OpenLobbyResult struct {
@@ -176,6 +223,8 @@ type SessionEventBroadcaster interface {
 	BroadcastTimerResumed(sessionID string, resumedAt time.Time, timeRemainingMs int64)
 	BroadcastQuestionRevealed(sessionID string, sessionQuestionID string, correctIndex int, distribution []AnswerDistributionItem, top5 []LeaderboardEntry)
 	BroadcastSessionEnded(sessionID string, reason string)
+	BroadcastPlayerJoined(sessionID string, playerID string, nickname string, avatarColor string, totalPlayers int)
+	BroadcastAnswerCountUpdated(sessionID string, sessionQuestionID string, answeredCount int, totalPlayers int)
 }
 
 type noopBroadcaster struct{}
@@ -188,6 +237,9 @@ func (noopBroadcaster) BroadcastTimerResumed(string, time.Time, int64) {}
 func (noopBroadcaster) BroadcastQuestionRevealed(string, string, int, []AnswerDistributionItem, []LeaderboardEntry) {
 }
 func (noopBroadcaster) BroadcastSessionEnded(string, string) {}
+func (noopBroadcaster) BroadcastPlayerJoined(string, string, string, string, int) {}
+func (noopBroadcaster) BroadcastAnswerCountUpdated(string, string, int, int)      {}
 
 // NewNoopBroadcaster returns a SessionEventBroadcaster that does nothing.
 func NewNoopBroadcaster() SessionEventBroadcaster { return noopBroadcaster{} }
+

@@ -58,7 +58,10 @@ type SessionRepo interface {
 	ShiftQuestionAskedAt(ctx context.Context, sessionQuestionID uuid.UUID, delta time.Duration) error
 	RevealQuestion(ctx context.Context, id uuid.UUID) (RevealData, error)
 	EndSession(ctx context.Context, id uuid.UUID, reason string) (Session, error)
+	JoinPlayer(ctx context.Context, sessionID uuid.UUID, pin string, nickname string, avatarColor string) (Player, Session, int, error)
+	SubmitAnswer(ctx context.Context, sessionID uuid.UUID, playerID uuid.UUID, sessionQuestionID uuid.UUID, chosenIndex int16, now time.Time) (Answer, bool, int, int, error)
 }
+
 
 // SessionRepository implements SessionRepo using pgxpool.
 type SessionRepository struct {
@@ -933,3 +936,170 @@ func (r *SessionRepository) EndSession(ctx context.Context, id uuid.UUID, reason
 	}
 	return sess, nil
 }
+
+// JoinPlayer verifies session status and PIN, persists the player record, and returns the player with total count.
+func (r *SessionRepository) JoinPlayer(ctx context.Context, sessionID uuid.UUID, pin string, nickname string, avatarColor string) (Player, Session, int, error) {
+	const selectSess = `
+		SELECT id, name, pin, status::text, question_count, time_per_question_s,
+		       points_per_answer, speed_bonus_enabled, started_at, ended_at,
+		       created_by, created_at, updated_at, deleted_at
+		FROM sessions
+		WHERE id = $1 AND deleted_at IS NULL`
+
+	var sess Session
+	err := r.pool.QueryRow(ctx, selectSess, sessionID).Scan(
+		&sess.ID, &sess.Name, &sess.PIN, &sess.Status,
+		&sess.QuestionCount, &sess.TimePerQuestionS, &sess.PointsPerAnswer,
+		&sess.SpeedBonusEnabled, &sess.StartedAt, &sess.EndedAt,
+		&sess.CreatedBy, &sess.CreatedAt, &sess.UpdatedAt, &sess.DeletedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Player{}, Session{}, 0, ErrSessionNotFound
+	}
+	if err != nil {
+		return Player{}, Session{}, 0, fmt.Errorf("session repo: join player find session: %w", err)
+	}
+
+	if sess.PIN != pin {
+		return Player{}, Session{}, 0, ErrInvalidPIN
+	}
+	if sess.Status != "lobby" {
+		return Player{}, Session{}, 0, ErrSessionNotInLobby
+	}
+
+	const insertPlayer = `
+		INSERT INTO players (session_id, nickname, avatar_color, total_score, joined_at)
+		VALUES ($1, $2, $3, 0, now())
+		RETURNING id, session_id, nickname, avatar_color, total_score, joined_at, disconnected_at`
+
+	var player Player
+	err = r.pool.QueryRow(ctx, insertPlayer, sessionID, nickname, avatarColor).Scan(
+		&player.ID, &player.SessionID, &player.Nickname, &player.AvatarColor,
+		&player.TotalScore, &player.JoinedAt, &player.DisconnectedAt,
+	)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return Player{}, Session{}, 0, ErrNicknameTaken
+		}
+		return Player{}, Session{}, 0, fmt.Errorf("session repo: join player insert: %w", err)
+	}
+
+	var totalPlayers int
+	err = r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM players WHERE session_id = $1`, sessionID).Scan(&totalPlayers)
+	if err != nil {
+		return Player{}, Session{}, 0, fmt.Errorf("session repo: join player count total: %w", err)
+	}
+
+	return player, sess, totalPlayers, nil
+}
+
+// SubmitAnswer persists an answer, enforcing timer deadlines and returning existing answers idempotently.
+func (r *SessionRepository) SubmitAnswer(ctx context.Context, sessionID uuid.UUID, playerID uuid.UUID, sessionQuestionID uuid.UUID, chosenIndex int16, now time.Time) (Answer, bool, int, int, error) {
+	// 1. Check if the player already submitted an answer for this question (Idempotency)
+	const selectExisting = `
+		SELECT id, player_id, session_question_id, chosen_index, is_correct, points_awarded, answer_time_ms, answered_at
+		FROM answers
+		WHERE player_id = $1 AND session_question_id = $2`
+
+	var existing Answer
+	err := r.pool.QueryRow(ctx, selectExisting, playerID, sessionQuestionID).Scan(
+		&existing.ID, &existing.PlayerID, &existing.SessionQuestionID,
+		&existing.ChosenIndex, &existing.IsCorrect, &existing.PointsAwarded,
+		&existing.AnswerTimeMs, &existing.AnsweredAt,
+	)
+	if err == nil {
+		// Existing answer found -> return idempotent success
+		var answeredCount, totalPlayers int
+		_ = r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM answers WHERE session_question_id = $1`, sessionQuestionID).Scan(&answeredCount)
+		_ = r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM players WHERE session_id = $1`, sessionID).Scan(&totalPlayers)
+		return existing, true, answeredCount, totalPlayers, nil
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return Answer{}, false, 0, 0, fmt.Errorf("session repo: submit answer check existing: %w", err)
+	}
+
+	// 2. Validate question belongs to active session and timer has not expired
+	const selectQuestion = `
+		SELECT s.status::text, s.time_per_question_s, sq.asked_at, sq.revealed_at
+		FROM session_questions sq
+		JOIN sessions s ON s.id = sq.session_id
+		WHERE sq.id = $1 AND sq.session_id = $2 AND s.deleted_at IS NULL`
+
+	var status string
+	var timeLimitS int16
+	var askedAt *time.Time
+	var revealedAt *time.Time
+
+	err = r.pool.QueryRow(ctx, selectQuestion, sessionQuestionID, sessionID).Scan(
+		&status, &timeLimitS, &askedAt, &revealedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Answer{}, false, 0, 0, ErrQuestionNotFound
+	}
+	if err != nil {
+		return Answer{}, false, 0, 0, fmt.Errorf("session repo: submit answer find question: %w", err)
+	}
+
+	if status != "active" {
+		return Answer{}, false, 0, 0, ErrSessionNotActive
+	}
+	if askedAt == nil || revealedAt != nil {
+		return Answer{}, false, 0, 0, ErrQuestionClosed
+	}
+
+	totalTimeMs := int64(timeLimitS) * 1000
+	elapsedMs := now.Sub(*askedAt).Milliseconds()
+	if elapsedMs > totalTimeMs {
+		return Answer{}, false, 0, 0, ErrQuestionClosed
+	}
+
+	answerTimeMs := int(elapsedMs)
+	if answerTimeMs < 0 {
+		answerTimeMs = 0
+	}
+
+	// 3. Insert answer record
+	const insertAnswer = `
+		INSERT INTO answers (player_id, session_question_id, chosen_index, is_correct, points_awarded, answer_time_ms, answered_at)
+		VALUES ($1, $2, $3, false, 0, $4, $5)
+		ON CONFLICT (player_id, session_question_id) DO NOTHING
+		RETURNING id, player_id, session_question_id, chosen_index, is_correct, points_awarded, answer_time_ms, answered_at`
+
+	var newAns Answer
+	err = r.pool.QueryRow(ctx, insertAnswer, playerID, sessionQuestionID, chosenIndex, answerTimeMs, now).Scan(
+		&newAns.ID, &newAns.PlayerID, &newAns.SessionQuestionID,
+		&newAns.ChosenIndex, &newAns.IsCorrect, &newAns.PointsAwarded,
+		&newAns.AnswerTimeMs, &newAns.AnsweredAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		// Conflict on concurrent insert -> re-query existing
+		err = r.pool.QueryRow(ctx, selectExisting, playerID, sessionQuestionID).Scan(
+			&existing.ID, &existing.PlayerID, &existing.SessionQuestionID,
+			&existing.ChosenIndex, &existing.IsCorrect, &existing.PointsAwarded,
+			&existing.AnswerTimeMs, &existing.AnsweredAt,
+		)
+		if err != nil {
+			return Answer{}, false, 0, 0, fmt.Errorf("session repo: submit answer fetch after conflict: %w", err)
+		}
+		var answeredCount, totalPlayers int
+		_ = r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM answers WHERE session_question_id = $1`, sessionQuestionID).Scan(&answeredCount)
+		_ = r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM players WHERE session_id = $1`, sessionID).Scan(&totalPlayers)
+		return existing, true, answeredCount, totalPlayers, nil
+	}
+	if err != nil {
+		return Answer{}, false, 0, 0, fmt.Errorf("session repo: submit answer insert: %w", err)
+	}
+
+	var answeredCount, totalPlayers int
+	err = r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM answers WHERE session_question_id = $1`, sessionQuestionID).Scan(&answeredCount)
+	if err != nil {
+		return Answer{}, false, 0, 0, fmt.Errorf("session repo: submit answer count answered: %w", err)
+	}
+	err = r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM players WHERE session_id = $1`, sessionID).Scan(&totalPlayers)
+	if err != nil {
+		return Answer{}, false, 0, 0, fmt.Errorf("session repo: submit answer count total players: %w", err)
+	}
+
+	return newAns, false, answeredCount, totalPlayers, nil
+}
+

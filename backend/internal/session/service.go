@@ -26,6 +26,8 @@ type Service interface {
 	ResumeTimer(ctx context.Context, id uuid.UUID) (ResumeTimerResult, error)
 	Reveal(ctx context.Context, id uuid.UUID) (RevealResult, error)
 	End(ctx context.Context, id uuid.UUID, reason string) (EndSessionResult, error)
+	Join(ctx context.Context, sessionID uuid.UUID, pin string, nickname string) (PlayerJoinResult, error)
+	SubmitAnswer(ctx context.Context, sessionID uuid.UUID, playerID uuid.UUID, sessionQuestionID uuid.UUID, chosenIndex int16) (AnswerSubmitResult, error)
 }
 
 type service struct {
@@ -343,3 +345,72 @@ func (s *service) End(ctx context.Context, id uuid.UUID, reason string) (EndSess
 		EndedAt:   *sess.EndedAt,
 	}, nil
 }
+
+func (s *service) Join(ctx context.Context, sessionID uuid.UUID, pin string, nickname string) (PlayerJoinResult, error) {
+	cleanPIN := strings.TrimSpace(pin)
+	if len(cleanPIN) != 6 {
+		return PlayerJoinResult{}, fmt.Errorf("VALIDATION_ERROR: pin must be 6 digits")
+	}
+	for _, ch := range cleanPIN {
+		if ch < '0' || ch > '9' {
+			return PlayerJoinResult{}, fmt.Errorf("VALIDATION_ERROR: pin must be numeric")
+		}
+	}
+
+	cleanNick := strings.TrimSpace(nickname)
+	if len(cleanNick) < 2 || len(cleanNick) > 20 {
+		return PlayerJoinResult{}, fmt.Errorf("VALIDATION_ERROR: nickname must be between 2 and 20 characters")
+	}
+
+	avatarColor := AssignAvatarColor(cleanNick)
+
+	player, sess, totalPlayers, err := s.repo.JoinPlayer(ctx, sessionID, cleanPIN, cleanNick, avatarColor)
+	if err != nil {
+		return PlayerJoinResult{}, err
+	}
+
+	token, exp, err := auth.IssuePlayerToken(player.ID, sess.ID, s.authCfg)
+	if err != nil {
+		return PlayerJoinResult{}, fmt.Errorf("session service: issue player token: %w", err)
+	}
+
+	s.broadcaster.BroadcastPlayerJoined(sess.ID.String(), player.ID.String(), player.Nickname, player.AvatarColor, totalPlayers)
+
+	return PlayerJoinResult{
+		PlayerID:       player.ID.String(),
+		Nickname:       player.Nickname,
+		AvatarColor:    player.AvatarColor,
+		SessionID:      sess.ID.String(),
+		SessionName:    sess.Name,
+		PlayerToken:    token,
+		TokenExpiresAt: exp,
+	}, nil
+}
+
+func (s *service) SubmitAnswer(ctx context.Context, sessionID uuid.UUID, playerID uuid.UUID, sessionQuestionID uuid.UUID, chosenIndex int16) (AnswerSubmitResult, error) {
+	if chosenIndex < 0 || chosenIndex > 3 {
+		return AnswerSubmitResult{}, fmt.Errorf("VALIDATION_ERROR: chosen_index must be between 0 and 3")
+	}
+
+	ans, isDuplicate, answeredCount, totalPlayers, err := s.repo.SubmitAnswer(ctx, sessionID, playerID, sessionQuestionID, chosenIndex, time.Now().UTC())
+	if err != nil {
+		return AnswerSubmitResult{}, err
+	}
+
+	if !isDuplicate {
+		s.broadcaster.BroadcastAnswerCountUpdated(sessionID.String(), sessionQuestionID.String(), answeredCount, totalPlayers)
+	}
+
+	var retChosen int16
+	if ans.ChosenIndex != nil {
+		retChosen = *ans.ChosenIndex
+	}
+
+	return AnswerSubmitResult{
+		AnswerID:    ans.ID.String(),
+		ChosenIndex: retChosen,
+		AnsweredAt:  ans.AnsweredAt,
+		IsDuplicate: isDuplicate,
+	}, nil
+}
+

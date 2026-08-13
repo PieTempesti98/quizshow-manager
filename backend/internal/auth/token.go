@@ -135,3 +135,85 @@ func ValidateClaims(tokenString string, cfg Config) (AdminClaims, error) {
 		Issuer:  c.Issuer,
 	}, nil
 }
+
+// PlayerClaims holds the validated player claims injected into request context by RequirePlayer.
+type PlayerClaims struct {
+	PlayerID  uuid.UUID
+	SessionID uuid.UUID
+	Role      string
+	Issuer    string
+}
+
+// playerClaimsContextKey is the typed key used to store PlayerClaims in Fiber's Locals.
+type playerClaimsContextKey struct{}
+
+// PlayerClaimsKey is the key under which PlayerClaims are stored in the Fiber context.
+var PlayerClaimsKey = playerClaimsContextKey{}
+
+// playerJwtClaims is the JWT payload for a player token.
+type playerJwtClaims struct {
+	SessionID string `json:"session_id"`
+	Role      string `json:"role"`
+	jwt.RegisteredClaims
+}
+
+// IssuePlayerToken issues a 4-hour JWT for an ephemeral player in a specific session.
+func IssuePlayerToken(playerID uuid.UUID, sessionID uuid.UUID, cfg Config) (string, time.Time, error) {
+	now := time.Now().UTC()
+	exp := now.Add(4 * time.Hour)
+	claims := playerJwtClaims{
+		SessionID: sessionID.String(),
+		Role:      "player",
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    cfg.JWTIssuer,
+			Subject:   playerID.String(),
+			ExpiresAt: jwt.NewNumericDate(exp),
+			IssuedAt:  jwt.NewNumericDate(now),
+		},
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	signed, err := token.SignedString(cfg.JWTSecret)
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("issue player token: %w", err)
+	}
+	return signed, exp, nil
+}
+
+// ValidatePlayerClaims parses and validates a Player JWT, returning the embedded PlayerClaims.
+func ValidatePlayerClaims(tokenString string, cfg Config) (PlayerClaims, error) {
+	var c playerJwtClaims
+	token, err := jwt.ParseWithClaims(
+		tokenString, &c,
+		func(t *jwt.Token) (any, error) {
+			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+			}
+			return cfg.JWTSecret, nil
+		},
+		jwt.WithValidMethods([]string{"HS256"}),
+		jwt.WithIssuer(cfg.JWTIssuer),
+		jwt.WithExpirationRequired(),
+	)
+	if err != nil || !token.Valid {
+		return PlayerClaims{}, fmt.Errorf("invalid token: %w", err)
+	}
+	playerID, err := uuid.Parse(c.Subject)
+	if err != nil {
+		return PlayerClaims{}, fmt.Errorf("invalid player subject claim: %w", err)
+	}
+	var sessionID uuid.UUID
+	if c.SessionID != "" {
+		sessionID, err = uuid.Parse(c.SessionID)
+		if err != nil {
+			return PlayerClaims{}, fmt.Errorf("invalid session_id claim: %w", err)
+		}
+	}
+	return PlayerClaims{
+		PlayerID:  playerID,
+		SessionID: sessionID,
+		Role:      c.Role,
+		Issuer:    c.Issuer,
+	}, nil
+}
+
+

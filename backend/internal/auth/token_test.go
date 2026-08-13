@@ -130,3 +130,57 @@ func TestValidateClaims_WrongSignature(t *testing.T) {
 		t.Fatal("expected error for tampered signature")
 	}
 }
+
+func TestIssuePlayerToken(t *testing.T) {
+	playerID := uuid.New()
+	sessionID := uuid.New()
+
+	token, exp, err := IssuePlayerToken(playerID, sessionID, testCfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if token == "" {
+		t.Fatal("expected non-empty token")
+	}
+	if exp.Before(time.Now().Add(3 * time.Hour)) {
+		t.Fatal("expected expiry around 4 hours from now")
+	}
+
+	claims, err := ValidatePlayerClaims(token, testCfg)
+	if err != nil {
+		t.Fatalf("validate player claims: %v", err)
+	}
+	if claims.PlayerID != playerID {
+		t.Errorf("expected playerID %v, got %v", playerID, claims.PlayerID)
+	}
+	if claims.SessionID != sessionID {
+		t.Errorf("expected sessionID %v, got %v", sessionID, claims.SessionID)
+	}
+	if claims.Role != "player" {
+		t.Errorf("expected role 'player', got %q", claims.Role)
+	}
+	if claims.Issuer != testCfg.JWTIssuer {
+		t.Errorf("expected issuer %q, got %q", testCfg.JWTIssuer, claims.Issuer)
+	}
+}
+
+func TestValidatePlayerClaims_Errors(t *testing.T) {
+	playerID := uuid.New()
+	sessionID := uuid.New()
+
+	// 1. Wrong issuer
+	wrongCfg := testCfg
+	wrongCfg.JWTIssuer = "https://wrong.local"
+	token, _, _ := IssuePlayerToken(playerID, sessionID, wrongCfg)
+	if _, err := ValidatePlayerClaims(token, testCfg); err == nil {
+		t.Fatal("expected error for wrong issuer")
+	}
+
+	// 2. Tampered signature
+	validToken, _, _ := IssuePlayerToken(playerID, sessionID, testCfg)
+	tampered := validToken[:len(validToken)-4] + "YYYY"
+	if _, err := ValidatePlayerClaims(tampered, testCfg); err == nil {
+		t.Fatal("expected error for tampered signature")
+	}
+}
+

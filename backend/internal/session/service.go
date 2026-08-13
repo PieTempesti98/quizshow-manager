@@ -4,10 +4,11 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/PieTempesti98/quizshow/internal/auth"
-	qrcode "github.com/skip2/go-qrcode"
 	"github.com/google/uuid"
+	qrcode "github.com/skip2/go-qrcode"
 )
 
 // Service defines the session business operations.
@@ -20,18 +21,30 @@ type Service interface {
 	OpenLobby(ctx context.Context, id uuid.UUID) (OpenLobbyResult, error)
 	GetQR(ctx context.Context, id uuid.UUID) ([]byte, error)
 	Launch(ctx context.Context, id uuid.UUID) (LaunchResult, error)
+	NextQuestion(ctx context.Context, id uuid.UUID) (NextQuestionResult, error)
+	PauseTimer(ctx context.Context, id uuid.UUID) (PauseTimerResult, error)
+	ResumeTimer(ctx context.Context, id uuid.UUID) (ResumeTimerResult, error)
+	Reveal(ctx context.Context, id uuid.UUID) (RevealResult, error)
+	End(ctx context.Context, id uuid.UUID, reason string) (EndSessionResult, error)
 }
 
 type service struct {
-	repo        SessionRepo
-	authCfg     auth.Config
-	playerURL   string // PLACEHOLDER: update PLAYER_APP_BASE_URL env var when player frontend is deployed
-	broadcaster SessionEventBroadcaster
+	repo         SessionRepo
+	authCfg      auth.Config
+	playerURL    string // PLACEHOLDER: update PLAYER_APP_BASE_URL env var when player frontend is deployed
+	broadcaster  SessionEventBroadcaster
+	pauseTracker *PauseTracker
 }
 
 // NewService constructs a session Service.
 func NewService(repo SessionRepo, authCfg auth.Config, playerURL string, broadcaster SessionEventBroadcaster) Service {
-	return &service{repo: repo, authCfg: authCfg, playerURL: playerURL, broadcaster: broadcaster}
+	return &service{
+		repo:         repo,
+		authCfg:      authCfg,
+		playerURL:    playerURL,
+		broadcaster:  broadcaster,
+		pauseTracker: NewPauseTracker(),
+	}
 }
 
 // buildURL joins a base URL (trailing slash stripped) with a path.
@@ -198,5 +211,135 @@ func (s *service) Launch(ctx context.Context, id uuid.UUID) (LaunchResult, error
 		ProjectionToken: token,
 		ProjectionURL:   projURL,
 		StartedAt:       *sess.StartedAt,
+	}, nil
+}
+
+func (s *service) NextQuestion(ctx context.Context, id uuid.UUID) (NextQuestionResult, error) {
+	data, err := s.repo.NextQuestion(ctx, id)
+	if err != nil {
+		return NextQuestionResult{}, err
+	}
+
+	s.broadcaster.BroadcastQuestionStarted(
+		id.String(),
+		data.SessionQuestionID.String(),
+		data.Position,
+		data.Total,
+		data.Question,
+		data.TimeLimitS,
+		data.AskedAt,
+	)
+
+	return NextQuestionResult{
+		SessionQuestionID: data.SessionQuestionID.String(),
+		Position:          data.Position,
+		Total:             data.Total,
+		Question:          data.Question,
+		TimeLimitS:        data.TimeLimitS,
+		AskedAt:           data.AskedAt,
+	}, nil
+}
+
+func (s *service) PauseTimer(ctx context.Context, id uuid.UUID) (PauseTimerResult, error) {
+	active, err := s.repo.GetActiveQuestion(ctx, id)
+	if err != nil {
+		return PauseTimerResult{}, err
+	}
+
+	now := time.Now().UTC()
+	if err := s.pauseTracker.Pause(id, now); err != nil {
+		return PauseTimerResult{}, err
+	}
+
+	totalMs := int64(active.TimeLimitS) * 1000
+	elapsedMs := now.Sub(active.AskedAt).Milliseconds()
+	timeRemainingMs := totalMs - elapsedMs
+	if timeRemainingMs < 0 {
+		timeRemainingMs = 0
+	}
+
+	s.broadcaster.BroadcastTimerPaused(id.String(), now, timeRemainingMs)
+
+	return PauseTimerResult{
+		Ok:       true,
+		PausedAt: now,
+	}, nil
+}
+
+func (s *service) ResumeTimer(ctx context.Context, id uuid.UUID) (ResumeTimerResult, error) {
+	active, err := s.repo.GetActiveQuestion(ctx, id)
+	if err != nil {
+		return ResumeTimerResult{}, err
+	}
+
+	now := time.Now().UTC()
+	delta, err := s.pauseTracker.Resume(id, now)
+	if err != nil {
+		return ResumeTimerResult{}, err
+	}
+
+	if err := s.repo.ShiftQuestionAskedAt(ctx, active.SessionQuestionID, delta); err != nil {
+		return ResumeTimerResult{}, err
+	}
+
+	adjustedAskedAt := active.AskedAt.Add(delta)
+	totalMs := int64(active.TimeLimitS) * 1000
+	elapsedMs := now.Sub(adjustedAskedAt).Milliseconds()
+	timeRemainingMs := totalMs - elapsedMs
+	if timeRemainingMs < 0 {
+		timeRemainingMs = 0
+	}
+
+	s.broadcaster.BroadcastTimerResumed(id.String(), now, timeRemainingMs)
+
+	return ResumeTimerResult{
+		Ok:        true,
+		ResumedAt: now,
+	}, nil
+}
+
+func (s *service) Reveal(ctx context.Context, id uuid.UUID) (RevealResult, error) {
+	s.pauseTracker.Clear(id)
+
+	data, err := s.repo.RevealQuestion(ctx, id)
+	if err != nil {
+		return RevealResult{}, err
+	}
+
+	s.broadcaster.BroadcastQuestionRevealed(
+		id.String(),
+		data.SessionQuestionID.String(),
+		data.CorrectIndex,
+		data.AnswerDistribution,
+		data.Top5,
+	)
+
+	return RevealResult{
+		SessionQuestionID:  data.SessionQuestionID.String(),
+		CorrectIndex:       data.CorrectIndex,
+		AnswerDistribution: data.AnswerDistribution,
+		Top5:               data.Top5,
+		RevealedAt:         data.RevealedAt,
+	}, nil
+}
+
+func (s *service) End(ctx context.Context, id uuid.UUID, reason string) (EndSessionResult, error) {
+	if reason == "" {
+		reason = "completed"
+	}
+
+	s.pauseTracker.Clear(id)
+
+	sess, err := s.repo.EndSession(ctx, id, reason)
+	if err != nil {
+		return EndSessionResult{}, err
+	}
+
+	s.broadcaster.BroadcastSessionEnded(id.String(), reason)
+
+	return EndSessionResult{
+		SessionID: sess.ID.String(),
+		Status:    sess.Status,
+		EndedAt:   *sess.EndedAt,
 	}, nil
 }

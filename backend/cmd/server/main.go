@@ -100,6 +100,11 @@ func main() {
 	protected.Delete("/sessions/:id", sessionHandler.Delete)
 	protected.Post("/sessions/:id/open-lobby", sessionHandler.OpenLobby)
 	protected.Post("/sessions/:id/launch", sessionHandler.Launch)
+	protected.Post("/sessions/:id/next-question", sessionHandler.NextQuestion)
+	protected.Post("/sessions/:id/pause-timer", sessionHandler.PauseTimer)
+	protected.Post("/sessions/:id/resume-timer", sessionHandler.ResumeTimer)
+	protected.Post("/sessions/:id/reveal", sessionHandler.Reveal)
+	protected.Post("/sessions/:id/end", sessionHandler.End)
 
 	port := os.Getenv("PORT")
 	if port == "" {

@@ -8,7 +8,7 @@ Update it at the end of every Claude Code session.
 
 **Phase:** Backend implementation in progress — auth + categories + questions CRUD + CSV import + session CRUD + session lifecycle + presenter controls complete  
 **Last updated:** 2026-08-14  
-**Active branch:** `007-presenter-controls`  
+**Active branch:** `develop`  
 
 ---
 

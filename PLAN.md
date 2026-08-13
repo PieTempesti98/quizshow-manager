@@ -4,12 +4,11 @@ This file tracks the current implementation status and next actions.
 Update it at the end of every Claude Code session.
 
 ---
-
 ## Current status
 
-**Phase:** Backend implementation in progress — auth + categories + questions CRUD + CSV import + session CRUD + session lifecycle complete  
-**Last updated:** 2026-06-30  
-**Active branch:** `develop` (integration branch — feature #6 merged)
+**Phase:** Backend implementation in progress — auth + categories + questions CRUD + CSV import + session CRUD + session lifecycle + presenter controls complete  
+**Last updated:** 2026-08-14  
+**Active branch:** `007-presenter-controls`  
 
 ---
 
@@ -74,11 +73,11 @@ Goal: working Go server with all REST endpoints, database, and auth. No frontend
 - [x] `POST /api/v1/sessions/:id/launch` (question draw + projection token)
 
 #### 1.5 Live session — presenter controls (US-P02–US-P06)
-- [ ] `POST /api/v1/sessions/:id/next-question`
-- [ ] `POST /api/v1/sessions/:id/pause-timer`
-- [ ] `POST /api/v1/sessions/:id/resume-timer`
-- [ ] `POST /api/v1/sessions/:id/reveal` (scoring via `ScoreAnswer()`)
-- [ ] `POST /api/v1/sessions/:id/end`
+- [x] `POST /api/v1/sessions/:id/next-question`
+- [x] `POST /api/v1/sessions/:id/pause-timer`
+- [x] `POST /api/v1/sessions/:id/resume-timer`
+- [x] `POST /api/v1/sessions/:id/reveal` (scoring via `ScoreAnswer()`)
+- [x] `POST /api/v1/sessions/:id/end`
 
 #### 1.6 Player endpoints (US-PL01, US-PL03)
 - [ ] `POST /api/v1/sessions/:id/join` (PIN + nickname → player JWT)
@@ -100,7 +99,7 @@ Goal: working Go server with all REST endpoints, database, and auth. No frontend
 
 ---
 
-### Phase 2 — Frontend (blocked until `docs/06-ui-flows.md` exists)
+## Phase 2 — Frontend (blocked until `docs/06-ui-flows.md` exists)
 
 Do not start this phase until:
 1. `docs/06-ui-flows.md` is generated (Claude Web session)
@@ -137,13 +136,13 @@ Do not start this phase until:
 
 ---
 
-### Phase 3 — Integration and QA
+## Phase 3 — Integration and QA
 
 - [ ] End-to-end flow test: admin → presenter → projection → player
 - [ ] Mobile testing (player view, 375px viewport)
 - [ ] WebSocket reconnection handling (player drops and rejoins)
 - [ ] Timer accuracy validation (pause/resume, server-side computation)
-- [ ] Score validation (`ScoreAnswer()` unit tests pass)
+- [x] Score validation (`ScoreAnswer()` unit tests pass)
 - [ ] CSV import edge cases (500 rows, bad data, abort vs skip)
 
 ---
@@ -161,7 +160,7 @@ Each item maps to one `/speckit.specify` invocation.
 | 4 | Questions CSV import | US-Q03 | 1.3 | Done — merged to develop via PR #3 |
 | 5 | Session create + configure | US-S01, US-S02 | 1.4 | Done — 15/15 smoke tests passed, merged to develop via PR #4 |
 | 6 | Session lifecycle (lobby → active) | US-S03 | 1.4 | Done — all smoke tests passed, merged to develop via PR #5 |
-| 7 | Presenter controls | US-P02, US-P03, US-P04, US-P05, US-P06 | 1.5 | Not started |
+| 7 | Presenter controls | US-P02, US-P03, US-P04, US-P05, US-P06 | 1.5 | Done — all 5 endpoints + scoring engine smoke tested on live DB |
 | 8 | Player join + answer | US-PL01, US-PL03 | 1.6 | Not started |
 | 9 | Stats + leaderboard | US-ST01, US-ST02, US-S04 | 1.7 | Not started |
 | 10 | WebSocket hub | US-P01, US-PL02, US-PR01–04 | 1.8 | Not started |
@@ -188,12 +187,15 @@ Each item maps to one `/speckit.specify` invocation.
 | 2026-06-30 | QR public route registered before `protected` group | Fiber applies group middleware to all routes registered after `v1.Group("", middleware)` — public routes must precede that call |
 | 2026-06-30 | `SessionEventBroadcaster` no-op injected at launch | Decouples session lifecycle from WebSocket hub (feature #10); real impl swapped in without touching service logic |
 | 2026-06-30 | `PLAYER_APP_BASE_URL` env var placeholder | Player/projection frontend URLs hardcoded as `http://localhost:5173`; env var makes them overridable at deploy time |
+| 2026-08-14 | Pure `ScoreAnswer` function & unit tests | Authoritative scoring logic isolated in pure Go with 100% boundary testing coverage |
+| 2026-08-14 | In-memory `PauseTracker` & `asked_at` shift on resume | Zero-drift pause/resume management with no extra DB schema columns needed |
+| 2026-08-14 | Transactional reveal with `FOR UPDATE` lock | Atomic calculation of points, leaderboard top 5, and answer distribution |
 
 ---
 
 ## Next session checklist
 
-Before opening Claude Code:
-1. Run `/speckit.specify` for feature #7 — Presenter controls (US-P02, US-P03, US-P04, US-P05, US-P06)
+Before opening next session:
+1. Run `/speckit.specify` for feature #8 — Player join + answer (US-PL01, US-PL03)
 2. Follow the workflow: specify → plan → tasks → implement
 3. After implementation, smoke test then open PR → merge to develop
